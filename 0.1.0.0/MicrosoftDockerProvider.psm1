@@ -24,7 +24,7 @@ $script:FastPackRefHastable = @{}
 $script:NuGetBinaryProgramDataPath="$env:ProgramFiles\PackageManagement\ProviderAssemblies"
 $script:NuGetBinaryLocalAppDataPath="$env:LOCALAPPDATA\PackageManagement\ProviderAssemblies"
 # go fwlink for 'https://nuget.org/nuget.exe'
-$script:NuGetClientSourceURL = 'http://go.microsoft.com/fwlink/?LinkID=690216&clcid=0x409'
+$script:NuGetClientSourceURL = 'https://go.microsoft.com/fwlink/?LinkID=690216&clcid=0x409'
 $script:NuGetProvider = $null
 
 Microsoft.PowerShell.Core\Set-StrictMode -Version Latest

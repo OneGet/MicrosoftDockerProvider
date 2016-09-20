@@ -7,7 +7,7 @@ $script:file_modules = "$script:location_modules\sources.txt"
 $script:DockerSearchIndex = "DockerSearchIndex.json"
 $script:Installer_Name = "InstallDocker"
 $script:Installer_Extension = "zip"
-$script:dockerURL = "http://go.microsoft.com/fwlink/?LinkID=825636&clcid=0x409"
+$script:dockerURL = "https://go.microsoft.com/fwlink/?LinkID=825636&clcid=0x409"
 $separator = "|#|"
 $script:isNanoServerInitialized = $false
 $script:isNanoServer = $false

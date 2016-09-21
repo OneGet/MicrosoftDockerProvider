@@ -23,9 +23,14 @@ $script:SupportsPSModulesFeatureName="supports-powershell-modules"
 $script:FastPackRefHastable = @{}
 $script:NuGetBinaryProgramDataPath="$env:ProgramFiles\PackageManagement\ProviderAssemblies"
 $script:NuGetBinaryLocalAppDataPath="$env:LOCALAPPDATA\PackageManagement\ProviderAssemblies"
-# go fwlink for 'https://nuget.org/nuget.exe'
-$script:NuGetClientSourceURL = 'http://go.microsoft.com/fwlink/?LinkID=690216&clcid=0x409'
 $script:NuGetProvider = $null
+$script:nanoserverPackageProvider = "NanoServerPackage"
+
+$script:SemVerTypeName = 'Microsoft.PackageManagement.Provider.Utility.SemanticVersion'
+if('Microsoft.PackageManagement.NuGetProvider.SemanticVersion' -as [Type])
+{
+    $script:SemVerTypeName = 'Microsoft.PackageManagement.NuGetProvider.SemanticVersion'
+}
 
 Microsoft.PowerShell.Core\Set-StrictMode -Version Latest
 
@@ -165,7 +170,7 @@ function Install-Package
     # Install WindowsFeature containers
     try
     {
-        $null = Install-WindowsFeature containers
+        InstallContainer
     }
     catch
     {
@@ -315,8 +320,7 @@ function Uninstall-Package
         $null = & "$env:ProgramFiles\docker\dockerd.exe" --unregister-service
         
         Write-Verbose "Removing the docker files"
-        $null = Get-ChildItem -Path $env:ProgramFiles\docker -Recurse | Remove-Item -force -recurse
-        #$null = Remove-Item $env:ProgramFiles\docker -Recurse -Force
+        $null = Get-ChildItem -Path $env:ProgramFiles\docker -Recurse | Remove-Item -force -Recurse
     }
     else 
     {
@@ -327,7 +331,7 @@ function Uninstall-Package
     $null = Remove-PathVar
 
     Write-Verbose "Uninstalling container feature from windows"
-    $null = Uninstall-WindowsFeature containers
+    UninstallContainer
 }
 
 #endregion One-Get Functions
@@ -393,23 +397,111 @@ function Get-InstalledPackage
 
 #region Helper-Functions
 
+function InstallContainer
+{
+    if(IsNanoServer)
+    {        
+        HandleProvider
+
+        # Find Container Package
+        $containerPackage = Find-NanoServerPackage -Name *Container* -ErrorAction SilentlyContinue -WarningAction SilentlyContinue
+
+        if($null -eq $containerPackage)
+        {
+            ThrowError -CallerPSCmdlet $PSCmdlet `
+                        -ExceptionName "Install Containers" `
+                        -ExceptionMessage "Unable to find the Containers Package from NanoServerPackage Module." `
+                        -ErrorId FailedToDownload `
+                        -ErrorCategory InvalidOperation
+        }
+
+        $install = $containerPackage | Install-NanoServerPackage -Force -ErrorAction SilentlyContinue -WarningAction SilentlyContinue
+    }
+    else
+    {
+        $null = Install-WindowsFeature containers
+    }
+}
+
+function UninstallContainer
+{
+    if(IsNanoServer)
+    {
+        return
+    }
+    else
+    {
+        $null = Uninstall-WindowsFeature containers        
+    }
+}
+
+function HandleProvider
+{
+    # Check if the nanoServerpackage provider is present
+    # if not download and install
+    if($null -eq (Get-PackageProvider -Name $script:nanoserverPackageProvider -ErrorAction SilentlyContinue -WarningAction SilentlyContinue))
+    {
+        $repositories = Get-PSRepository
+        if($null -eq $repositories){$null = Register-PSRepository -Default}
+
+        $nanoserverPackage = Find-Module -Name $script:nanoserverPackageProvider -ErrorAction SilentlyContinue -WarningAction SilentlyContinue
+        if($null -eq $nanoserverPackage)
+        {
+            ThrowError -CallerPSCmdlet $PSCmdlet `
+                    -ExceptionName "Install Containers" `
+                    -ExceptionMessage "Unable to find the NanoserverPackage to install Containers on the Nano Server." `
+                    -ErrorId FailedToDownload `
+                    -ErrorCategory InvalidOperation
+        }
+
+        # Install the provider 
+        $null = $nanoserverPackage | Install-Module -Force
+    }
+    
+    # Import the provider
+    $null = Import-PackageProvider -Name $script:nanoserverPackageProvider -Force
+    $null = Import-module -Name $script:nanoserverPackageProvider -Force
+}
+
 function Update-PathVar
 {
-    $currPath = [Environment]::GetEnvironmentVariable("Path", [EnvironmentVariableTarget]::Machine)
-    if($currPath -match $script:pathVar) {return}
-
     $pathVariable = "C:\Program Files\docker"
-    $null = [Environment]::SetEnvironmentVariable("Path", $env:Path + ";" + $pathVariable, [EnvironmentVariableTarget]::Machine)
+
+    if(IsNanoServer)
+    {
+        $currPath = [Environment]::GetEnvironmentVariable("Path")
+        if($currPath -match $script:pathVar) {return}
+        $null = [Environment]::SetEnvironmentVariable("Path", $env:Path + ";" + $pathVariable)
+    }
+    else
+    {
+        $currPath = [Environment]::GetEnvironmentVariable("Path", [EnvironmentVariableTarget]::Machine)
+        if($currPath -match $script:pathVar) {return}
+        $null = [Environment]::SetEnvironmentVariable("Path", $env:Path + ";" + $pathVariable, [EnvironmentVariableTarget]::Machine)
+    }
 }
 
 function Remove-PathVar
 {
-    $currPath = [Environment]::GetEnvironmentVariable("Path", [EnvironmentVariableTarget]::Machine)
-    if($currPath -notmatch $script:pathVar) {return}
+    if(IsNanoServer)
+    {
+        $currPath = [Environment]::GetEnvironmentVariable("Path")
+        if($currPath -notmatch $script:pathVar) {return}
 
-    $newPath = $currPath -replace ($script:pathVar),$null
-    $newPath = $newPath -replace (";;"),";"
-    $null = [Environment]::SetEnvironmentVariable("Path", $newPath, [EnvironmentVariableTarget]::Machine)
+        $newPath = $currPath -replace ($script:pathVar),$null
+        $newPath = $newPath -replace (";;"),";"
+        $null = [Environment]::SetEnvironmentVariable("Path", $newPath)
+    }
+    else
+    {
+        $currPath = [Environment]::GetEnvironmentVariable("Path", [EnvironmentVariableTarget]::Machine)
+        if($currPath -notmatch $script:pathVar) {return}
+
+        $newPath = $currPath -replace ($script:pathVar),$null
+        $newPath = $newPath -replace (";;"),";"
+        $null = [Environment]::SetEnvironmentVariable("Path", $newPath, [EnvironmentVariableTarget]::Machine)        
+    }
+    
 }
 
 function Set-ModuleSourcesVariable
@@ -574,8 +666,8 @@ function Find-FromUrl
     }
 
     $searchDictionary = @{}
-    $savedVersion = [Microsoft.PackageManagement.Provider.Utility.SemanticVersion]::new('0.0.0')
-
+    $savedVersion = $script:SemVerTypeName::new('0.0.0')
+    
     # version requirement
     # compare different versions
     foreach($channel in $channelValues)
@@ -617,12 +709,11 @@ function Find-FromUrl
                 }
             }
 
-            $thisVersion = [Microsoft.PackageManagement.Provider.Utility.SemanticVersion]::new($versionValue)
+            $thisVersion = $script:SemVerTypeName::new($versionValue)
 
             if($MinimumVersion)
             {
-                $convertedMinimumVersion = [Microsoft.PackageManagement.Provider.Utility.SemanticVersion]::new($MinimumVersion)
-                if($thisVersion -ge $convertedMinimumVersion)
+                if($thisVersion -ge $MinimumVersion)
                 {
                     if($thisVersion -ge $savedVersion) {$savedVersion = $thisVersion}
                     $toggle = $true
@@ -635,8 +726,7 @@ function Find-FromUrl
 
             if($MaximumVersion)
             {
-                $convertedMaximumVersion = [Microsoft.PackageManagement.Provider.Utility.SemanticVersion]::new($MaximumVersion)
-                if($thisVersion -le $convertedMaximumVersion)
+                if($thisVersion -le $MaximumVersion)
                 {
                     if($thisVersion -ge $savedVersion) {$savedVersion = $thisVersion}
                     $toggle = $true
@@ -659,9 +749,9 @@ function Find-FromUrl
         }
     }
 
-    if(-not $AllVersions) 
+    if(-not $AllVersions)
     {
-        if($savedVersion -eq [Microsoft.PackageManagement.Provider.Utility.SemanticVersion]::new('0.0.0')){return $null}
+        if($savedVersion -eq '0.0.0'){return $null}
 
         $ver = $savedVersion.ToString()
         $obj = Get-ResultObject -JSON $versions -Version $ver
@@ -755,6 +845,13 @@ function Resolve-FwdLink
     )
     
     $response = Get-HttpResponse -Uri $Uri
+
+    if($null -eq $response)
+    {
+        # This is not a forward link. Return the original URI
+        return $Uri
+    }
+
     $link = $response.Result.RequestMessage.RequestUri
     $fullUrl = $link.AbsoluteUri
     return $fullUrl
@@ -1314,7 +1411,15 @@ function VerifyHashCheck
 
     $fileHash = Get-FileHash -Path $Destination `
                                 -Algorithm SHA256
-    $fileSha256 = $fileHash.Hash
+    
+    if($fileHash.Psobject.properties.name -Contains "Hash")
+    {
+        $fileSha256 = $fileHash.Hash
+    }
+    else
+    {
+        return $false
+    }
 
     return ($hash -ieq $fileSha256)
 }

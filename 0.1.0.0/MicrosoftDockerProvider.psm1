@@ -151,13 +151,6 @@ function Install-Package
         $fastPackageReference
     )
 
-    # Check if another installation exists
-    if(Test-Path $env:ProgramFiles\docker\dockerd.exe)
-    {
-        Write-Error "An instance already exists. Skipping the installation."
-        return
-    }
-
     if(-not (Test-AdminPriviledges))
     {
         ThrowError -CallerPSCmdlet $PSCmdlet `
@@ -167,21 +160,66 @@ function Install-Package
                     -ErrorCategory InvalidOperation
     }
 
-    # Install WindowsFeature containers
-    try
-    {
-        InstallContainer
-    }
-    catch
-    {
-        $ErrorMessage = $_.Exception.Message
-        ThrowError -CallerPSCmdlet $PSCmdlet `
-                    -ExceptionName $_.Exception.GetType().FullName `
-                    -ExceptionMessage $ErrorMessage `
-                    -ErrorId FailedToDownload `
-                    -ErrorCategory InvalidOperation
+    $options = $request.Options
+    $noRestart = $false
+    $update = $false
+    $force = $false
 
-        return
+    if($options)
+    {
+        foreach( $o in $options.Keys )
+        {
+            Write-Debug ("OPTION: {0} => {1}" -f ($o, $request.Options[$o]) )
+        }
+
+        if($options.ContainsKey('NoRestart'))
+        {
+            $noRestart = $true
+        }
+
+        if($options.ContainsKey('Update'))
+        {
+            Write-Verbose "Updating the docker installation."
+            $update = $true
+        }
+
+        if($options.ContainsKey("Force"))
+        {
+            $force = $true
+        }
+    }
+
+    if(Test-Path $env:ProgramFiles\docker\dockerd.exe)
+    {
+        if($update -or $force)
+        {
+            # Uninstall if another installation exists
+            UninstallHelper
+        }
+        elseif(-not $force)
+        {
+            Write-Error "Another installation already exists. Quitting."
+            return
+        }
+    }    
+    else
+    {
+        # Install WindowsFeature containers
+        try
+        {
+            InstallContainer
+        }
+        catch
+        {
+            $ErrorMessage = $_.Exception.Message
+            ThrowError -CallerPSCmdlet $PSCmdlet `
+                        -ExceptionName $_.Exception.GetType().FullName `
+                        -ExceptionMessage $ErrorMessage `
+                        -ErrorId FailedToDownload `
+                        -ErrorCategory InvalidOperation
+
+            return
+        }        
     }
 
     $splitterArray = @("$separator")
@@ -247,22 +285,6 @@ function Install-Package
                     -ErrorCategory InvalidOperation
     }
 
-    $options = $request.Options
-    $noRestart = $false
-
-    if($options)
-    {
-        foreach( $o in $options.Keys )
-        {
-            Write-Debug ("OPTION: {0} => {1}" -f ($o, $request.Options[$o]) )
-        }
-
-        if($options.ContainsKey('NoRestart'))
-        {
-            $noRestart = $true
-        }            
-    }
-
     # Update the path variable
     $null = Update-PathVar
 
@@ -292,43 +314,7 @@ function Uninstall-Package
         $fastPackageReference
     )
 
-    if(-not (Test-AdminPriviledges))
-    {
-        ThrowError -CallerPSCmdlet $PSCmdlet `
-                    -ExceptionName $_.Exception.GetType().FullName `
-                    -ExceptionMessage "Installing docker needs administrator mode." `
-                    -ErrorId FailedToDownload `
-                    -ErrorCategory InvalidOperation
-    }
-
-    # Stop docker service
-    $dockerService = Get-Service | Where-Object {$_.Name -eq "docker"}
-    if($null -eq $dockerService)
-    {
-        # Docker service is not available
-        Write-Error "Docker Service is not available."
-    }
-
-    if(($dockerService.Status -eq "Started") -or ($dockerService.Status -eq "Running"))
-    {
-        $null = stop-service docker
-    }
-
-    if(Test-Path $env:ProgramFiles\docker\dockerd.exe)
-    {
-        Write-Verbose "Unregistering the service"
-        $null = & "$env:ProgramFiles\docker\dockerd.exe" --unregister-service
-        
-        Write-Verbose "Removing the docker files"
-        $null = Get-ChildItem -Path $env:ProgramFiles\docker -Recurse | Remove-Item -force -Recurse
-    }
-    else 
-    {
-        Write-Error "Docker is not present under the Program Files. Please check the installation."
-    }
-
-    Write-Verbose "Removing the path variable"
-    $null = Remove-PathVar
+    UninstallHelper
 
     Write-Verbose "Uninstalling container feature from windows"
     UninstallContainer
@@ -337,16 +323,6 @@ function Uninstall-Package
 #endregion One-Get Functions
 
 #region One-Get Required Functions
-
-function Initialize-Provider
-{
-    write-debug "In $($script:Providername) - Initialize-Provider"
-}
-
-function Get-PackageProviderName
-{
-    return $script:Providername
-}
 
 function Initialize-Provider
 {
@@ -396,6 +372,47 @@ function Get-InstalledPackage
 #endregion One-Get Required Functions
 
 #region Helper-Functions
+
+function UninstallHelper
+{
+    if(-not (Test-AdminPriviledges))
+    {
+        ThrowError -CallerPSCmdlet $PSCmdlet `
+                    -ExceptionName $_.Exception.GetType().FullName `
+                    -ExceptionMessage "Installing docker needs administrator mode." `
+                    -ErrorId FailedToDownload `
+                    -ErrorCategory InvalidOperation
+    }
+
+    # Stop docker service
+    $dockerService = Get-Service | Where-Object {$_.Name -eq "docker"}
+    if($null -eq $dockerService)
+    {
+        # Docker service is not available
+        Write-Error "Docker Service is not available."
+    }
+
+    if(($dockerService.Status -eq "Started") -or ($dockerService.Status -eq "Running"))
+    {
+        $null = stop-service docker
+    }
+
+    if(Test-Path $env:ProgramFiles\docker\dockerd.exe)
+    {
+        Write-Verbose "Unregistering the service"
+        $null = & "$env:ProgramFiles\docker\dockerd.exe" --unregister-service
+        
+        Write-Verbose "Removing the docker files"
+        $null = Get-ChildItem -Path $env:ProgramFiles\docker -Recurse | Remove-Item -force -Recurse
+    }
+    else 
+    {
+        Write-Error "Docker is not present under the Program Files. Please check the installation."
+    }
+
+    Write-Verbose "Removing the path variable"
+    $null = Remove-PathVar
+}
 
 function InstallContainer
 {
@@ -960,6 +977,7 @@ function Get-DynamicOptions
         Install 
         {
             Write-Output -InputObject (New-DynamicOption -Category $category -Name "NoRestart" -ExpectedType Switch -IsRequired $false)
+            Write-Output -InputObject (New-DynamicOption -Category $category -Name "Update" -ExpectedType Switch -IsRequired $false)
         }
     }
 }
@@ -1459,7 +1477,6 @@ function IsNanoServer
 function Install-NuGetClientBinaries
 {
     [CmdletBinding(SupportsShouldProcess = $true)]
-    #[CmdletBinding()]
     param
     (
         [parameter(Mandatory = $true)]

@@ -7,7 +7,7 @@ $script:file_modules = "$script:location_modules\sources.txt"
 $script:DockerSearchIndex = "DockerSearchIndex.json"
 $script:Installer_Name = "InstallDocker"
 $script:Installer_Extension = "zip"
-$script:dockerURL = "http://go.microsoft.com/fwlink/?LinkID=825636&clcid=0x409"
+$script:dockerURL = "https://go.microsoft.com/fwlink/?LinkID=825636&clcid=0x409"
 $separator = "|#|"
 $script:isNanoServerInitialized = $false
 $script:isNanoServer = $false
@@ -90,7 +90,7 @@ function Find-Package
         $Location = $currSource.SourceLocation
         $sourceName = $currSource.Name
 
-        if($location.StartsWith("http://") -or $location.StartsWith("https://"))
+        if($location.StartsWith("https://"))
         {
             $allResults += Find-FromUrl -Source $Location `
                                             -SourceName $sourceName `
@@ -1307,15 +1307,6 @@ function DownloadFile
             $downloadTime = "Downloaded in " + $difference.Hours + " hours, " + $difference.Minutes + " minutes, " + $difference.Seconds + " seconds."
             Write-Verbose $downloadTime
         }
-        elseif($downloadURL.StartsWith("\\"))
-        {
-            $startTime = Get-Date
-            $null = copy-item -Path $downloadURL -Destination $destination -Force
-            $endTime = Get-Date
-            $difference = New-TimeSpan -Start $startTime -End $endTime
-            $downloadTime = "Downloaded in " + $difference.Hours + " hours, " + $difference.Minutes + " minutes, " + $difference.Seconds + " seconds."
-            Write-Verbose $downloadTime
-        }
     }
     catch
     {
@@ -1387,10 +1378,6 @@ function CheckDiskSpace
     {
         $response = Get-HttpResponse -Uri $URL
         $size = $response.Result.Content.Headers.ContentLength        
-    }
-    elseif($URL.StartsWith("\\"))
-    {
-        $size = (get-item $URL).Length
     }
 
     $parent = Split-Path $Destination -Parent

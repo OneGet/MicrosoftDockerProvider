@@ -12,6 +12,14 @@ Once the provider is installed and imported, you can search, download, or instal
 * Uninstall-Package
 * Get-Package
 
+#### Register a source
+
+##### Register an URL to be used with MicrosoftDockerProvider
+	Register-PackageSource -ProviderName MicrosoftDockerProvider -Name AlternateSource -Location https://contoso.com/metaData.json
+
+##### Enlist all the registered sources
+	Get-PackageSource -ProviderName MicrosoftDockerProvider
+
 #### Search a Docker installer 
 
 ##### Example 1: Find the latest version of all available Docker installers. 
@@ -35,7 +43,7 @@ You can download and save Docker installer without installation, using Save-Pack
 	Save-Package –ProviderName MicrosoftDockerProvider -Name Docker -Path .\temp -MinimumVersion 1.2.3
 
 ##### Example 2: Download and save Docker installer from the search cmdlets.
-	Find-package –ProviderName MicrosoftDockeProvider | Save-Package -Path .
+	Find-package –ProviderName MicrosoftDockerProvider | Save-Package -Path .
 
 #### Get docker
 
@@ -47,6 +55,12 @@ Uninstall-Docker uninstalls Docker from the local machine.
 
 ##### Example 1: Uninstall docker from the local machine.
 	Uninstall-Package -ProviderName MicrosoftDockerProvider -Name dOcKeR -Verbose
+
+#### Update docker
+Updates current installation of docker with the requested version
+
+##### Example 1: Update docker
+	Install-Package -Name docker -ProviderName MicrosoftDockerProvider -Verbose -Update
 
 ### Version
 0.1.0.0

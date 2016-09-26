@@ -25,6 +25,7 @@ $script:NuGetBinaryProgramDataPath="$env:ProgramFiles\PackageManagement\Provider
 $script:NuGetBinaryLocalAppDataPath="$env:LOCALAPPDATA\PackageManagement\ProviderAssemblies"
 $script:NuGetProvider = $null
 $script:nanoserverPackageProvider = "NanoServerPackage"
+$script:hotFixList = ('KB3150513')
 
 $script:SemVerTypeName = 'Microsoft.PackageManagement.Provider.Utility.SemanticVersion'
 if('Microsoft.PackageManagement.NuGetProvider.SemanticVersion' -as [Type])
@@ -158,6 +159,18 @@ function Install-Package
                     -ExceptionMessage "Installing docker needs administrator mode." `
                     -ErrorId FailedToDownload `
                     -ErrorCategory InvalidOperation
+    }
+
+    # Check if the OS has the required KB(s)
+    $hotFix = Get-HotFix -ID $script:hotFixList -ErrorAction SilentlyContinue -WarningAction SilentlyContinue
+    if(($null -eq $hotfix) -or ($hotFix.Count -eq 0))
+    {
+        ThrowError -CallerPSCmdlet $PSCmdlet `
+                    -ExceptionName "Machine needs update" `
+                    -ExceptionMessage "$script:hotFixList is required to install docker" `
+                    -ErrorId FailedToDownload `
+                    -ErrorCategory InvalidOperation
+        return
     }
 
     $options = $request.Options

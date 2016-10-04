@@ -27,18 +27,13 @@ CompanyName = 'Microsoft'
 Copyright = '(c) 2016 Microsoft. All rights reserved.'
 
 # Description of the functionality provided by this module
-Description = 'This module helps you to find docker images for your Windows machine.
-                You can also download and install the docker images.
-                Thank you for your continued patronage.'
+Description = 'This module helps you to find docker images for your Windows machine. You can also download and install the docker images. Thank you for your continued patronage.'
 
 # Minimum version of the Windows PowerShell engine required by this module
-PowerShellVersion = '5.0'
+PowerShellVersion = '5.1'
 
 # Functions to export from this module
-FunctionsToExport = @('Find-DockerImage',
-                    'Save-DockerImage',
-                    'Install-DockerImage'
-                    )
+FunctionsToExport = @()
 
 # Private data to pass to the module specified in RootModule/ModuleToProcess. This may also contain a PSData hashtable with additional module metadata used by PowerShell.
 PrivateData = @{

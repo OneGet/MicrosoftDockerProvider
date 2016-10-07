@@ -3,7 +3,7 @@
 #
 # Copyright (c) Microsoft Corporation. All rights reserved.
 #
-# MicrosoftDockerProvider
+# DockerMsftProvider
 #
 #########################################################################################
 
@@ -11,7 +11,7 @@ Microsoft.PowerShell.Core\Set-StrictMode -Version Latest
 
 #region variables
 
-$script:Providername = "MicrosoftDockerProvider"
+$script:Providername = "DockerMsftProvider"
 $script:DockerSources = $null
 $script:location_modules = Microsoft.PowerShell.Management\Join-Path -Path $env:TEMP -ChildPath $script:ProviderName
 $script:location_sources= Microsoft.PowerShell.Management\Join-Path -Path $env:LOCALAPPDATA -ChildPath $script:ProviderName
@@ -22,22 +22,20 @@ $script:dockerURL = "https://go.microsoft.com/fwlink/?LinkID=825636&clcid=0x409"
 $separator = "|#|"
 $script:isNanoServerInitialized = $false
 $script:isNanoServer = $false
-$script:pathVar = Microsoft.PowerShell.Management\Join-Path -Path $env:ProgramFiles -ChildPath "Docker"  
+$script:SystemEnvironmentKey = 'HKLM:\System\CurrentControlSet\Control\Session Manager\Environment'
+$script:pathVar = Microsoft.PowerShell.Management\Join-Path -Path $env:ProgramFiles -ChildPath "Docker"
+$script:pathDockerD = Microsoft.PowerShell.Management\Join-Path -Path $env:ProgramFiles -ChildPath "Docker\dockerd.exe"
 $script:wildcardOptions = [System.Management.Automation.WildcardOptions]::CultureInvariant -bor `
                           [System.Management.Automation.WildcardOptions]::IgnoreCase
 
-$script:PSGetProgramDataPath = Microsoft.PowerShell.Management\Join-Path -Path $env:ProgramData -ChildPath 'Microsoft\Windows\PowerShell\PowerShellGet\'
-$script:PSGetAppLocalPath = Microsoft.PowerShell.Management\Join-Path -Path $env:LOCALAPPDATA -ChildPath 'Microsoft\Windows\PowerShell\PowerShellGet'
 $script:NuGetProviderName = "NuGet"
-$script:SupportsPSModulesFeatureName="supports-powershell-modules"
-$script:FastPackRefHastable = @{}
 $script:NuGetBinaryProgramDataPath="$env:ProgramFiles\PackageManagement\ProviderAssemblies"
 $script:NuGetBinaryLocalAppDataPath="$env:LOCALAPPDATA\PackageManagement\ProviderAssemblies"
 $script:NuGetProvider = $null
 $script:nanoserverPackageProvider = "NanoServerPackage"
 $script:hotFixID = 'KB3176936'
 $script:MetadataFileName = 'metadata.json'
-
+$script:serviceName = "docker"
 $script:SemVerTypeName = 'Microsoft.PackageManagement.Provider.Utility.SemanticVersion'
 if('Microsoft.PackageManagement.NuGetProvider.SemanticVersion' -as [Type])
 {
@@ -88,17 +86,13 @@ function Find-Package
         $sources = $options['Source']
     }
 
-    if ($null -eq $names -or $names.Count -eq 0)
+    if ((-not $names) -or ($names.Count -eq 0))
     {
         $names = @('')
     }
 
     $allResults = @()
     $allSources = Get-SourceList -Sources $sources
-
-    if(-not $MinimumVersion){$MinimumVersion = $null}
-    if(-not $MaximumVersion){$MaximumVersion = $null}
-    if(-not $RequiredVersion){$RequiredVersion = $null}
 
     foreach($currSource in $allSources)
     {
@@ -107,6 +101,7 @@ function Find-Package
 
         if($location.StartsWith("https://"))
         {
+            $tempResults = @()
             $tempResults += Find-FromUrl -Source $Location `
                                             -SourceName $sourceName `
                                             -Name $names `
@@ -115,18 +110,18 @@ function Find-Package
                                             -RequiredVersion $RequiredVersion `
                                             -AllVersions:$AllVersions
 
-            if($null -ne $tempResults)
+            if($tempResults)
             {
                 $allResults += $tempResults
             }
         }
         else
         {
-            Write-Error "Bad source '$sourceName' with location at $location"
+            Write-Error "Currently only https sources are supported. Please register with https source."
         }
     }
 
-    if(($null -eq $allResults) -or ($allResults.Count -eq 0))
+    if((-not $allResults) -or ($allResults.Count -eq 0))
     {
         return
     }
@@ -161,7 +156,7 @@ function Download-Package
 
 function Install-Package
 {
-    [CmdletBinding(SupportsShouldProcess = $true)]
+    [CmdletBinding()]
     param
     (
         [Parameter(Mandatory=$true)]
@@ -170,29 +165,28 @@ function Install-Package
         $fastPackageReference
     )
 
-    if(-not (Test-AdminPriviledge))
+    if(-not (Test-AdminPrivilege))
     {
         ThrowError -CallerPSCmdlet $PSCmdlet `
-                    -ExceptionName "System.ArgumentException" `
-                    -ExceptionMessage "Installing docker needs administrator mode." `
-                    -ErrorId "AdminMode" `
+                    -ExceptionName "InvalidOperationException" `
+                    -ExceptionMessage "Administrator rights are required to install docker." `
+                    -ErrorId "AdminPrivilegesAreRequiredForInstall" `
                     -ErrorCategory InvalidOperation
     }
 
     # Check if the OS has the required KB(s)
     $hotFix = Get-CimInstance -Query "select * from win32_quickfixengineering where HotFixID = '$script:hotFixID'"
-    if($null -eq $hotfix)
+    if(-not $hotfix)
     {
         ThrowError -CallerPSCmdlet $PSCmdlet `
-                    -ExceptionName "System.ArgumentException" `
+                    -ExceptionName "InvalidOperationException" `
                     -ExceptionMessage "$script:hotFixID is required to install docker" `
-                    -ErrorId "UpdatesNotInstalled" `
+                    -ErrorId "RequiredWindowsUpdateNotInstalled" `
                     -ErrorCategory InvalidOperation
         return
     }
 
     $options = $request.Options
-    $noRestart = $false
     $update = $false
     $force = $false
 
@@ -201,11 +195,6 @@ function Install-Package
         foreach( $o in $options.Keys )
         {
             Write-Debug ("OPTION: {0} => {1}" -f ($o, $request.Options[$o]) )
-        }
-
-        if($options.ContainsKey('NoRestart'))
-        {
-            $noRestart = $true
         }
 
         if($options.ContainsKey('Update'))
@@ -220,7 +209,7 @@ function Install-Package
         }
     }
 
-    if(Test-Path $env:ProgramFiles\Docker\dockerd.exe)
+    if(Test-Path $script:pathDockerD)
     {
         if($update -or $force)
         {
@@ -233,7 +222,7 @@ function Install-Package
             $resultArr = $dockerVersion -split ","
             $version = ($resultArr[0].Trim() -split " ")[2]
 
-            Write-Error "Docker $version already exists. Skipping install."
+            Write-Verbose "Docker $version already exists. Skipping install. Use -force to install anyway."
             return
         }
     }    
@@ -259,6 +248,8 @@ function Install-Package
 
     $splitterArray = @("$separator")
     $resultArray = $fastPackageReference.Split($splitterArray, [System.StringSplitOptions]::None)
+
+    if((-not $resultArray) -or ($resultArray.count -ne 8)){Write-Debug "Fast package reference doesn't have required parts."}
 
     $source = $resultArray[0]
     $name = $resultArray[1]
@@ -299,12 +290,11 @@ function Install-Package
         $null = Rename-Item -Path $env:ProgramFiles\docker -NewName $env:ProgramFiles\$dummyName
         $null = Rename-Item -Path $env:ProgramFiles\$dummyName -NewName $env:ProgramFiles\Docker        
 
-        if(Test-Path $env:ProgramFiles\Docker\dockerd.exe)
+        if(Test-Path $script:pathDockerD)
         {
             Write-Verbose "Trying to start the docker service..."
-            $service = @()
-            $service += get-service | Where-Object {$_.Name -eq 'Docker'}
-            if($null -eq $service -or $service.count -eq 0)
+            $service = get-service -Name Docker -WarningAction SilentlyContinue -ErrorAction SilentlyContinue
+            if(-not $service)
             {
                 $null = New-Service -Name Docker -BinaryPathName "$env:ProgramFiles\Docker\dockerd.exe --run-service"
             }
@@ -316,13 +306,18 @@ function Install-Package
     }
     catch
     {
-        $null = remove-item $destination -Force
         $ErrorMessage = $_.Exception.Message
         ThrowError -CallerPSCmdlet $PSCmdlet `
                     -ExceptionName $_.Exception.GetType().FullName `
                     -ExceptionMessage $ErrorMessage `
                     -ErrorId FailedToDownload `
                     -ErrorCategory InvalidOperation
+    }
+    finally
+    {
+        # Clean up
+        Write-Verbose "Removing the archive: $destination"
+        $null = remove-item $destination -Force
     }
 
     # Save the install information
@@ -331,19 +326,9 @@ function Install-Package
     # Update the path variable
     $null = Update-PathVar
 
-    # Clean up
-    Write-Verbose "Removing the archive: $destination"
-    $null = remove-item $destination -Force
+    Write-Verbose "A restart is required for this installation. Please restart your machine."
 
     Write-Output $downloadOutput
-
-    if(-not $noRestart)
-    {
-        if($request.ShouldContinue("Should I restart the computer", "Restarting the computer"))
-        {
-            Restart-Computer -ComputerName $env:COMPUTERNAME
-        }
-    }
 }
 
 function Uninstall-Package
@@ -364,6 +349,8 @@ function Uninstall-Package
 
     [string[]] $splitterArray = @("$separator")
     [string[]] $resultArray = $fastPackageReference.Split($splitterArray, [System.StringSplitOptions]::None)
+
+    if((-not $resultArray) -or ($resultArray.count -ne 3)){Write-Debug "Fast package reference doesn't have required parts."}
 
     $name = $resultArray[0]
     $version = $resultArray[1]
@@ -405,56 +392,57 @@ function Get-InstalledPackage
     )
 
     $name = 'docker'
+    $version = ''
+    $source = ''
 
-    if(Test-Path $env:ProgramFiles\Docker\$script:MetadataFileName)
+    if(Test-Path $env:ProgramFiles\Docker\$script:MetadataFileName) 
     {
-        $metaContent = (Get-Content -Path $env:ProgramFiles\Docker\$script:MetadataFileName) | ConvertFrom-Json
-        if($null -ne $metaContent)
+        $metaContent = (Get-Content -Path $env:ProgramFiles\Docker\$script:MetadataFileName)
+
+        if(IsNanoServer)
         {
-            $source = if($metaContent.PSObject.properties.name -match 'SourceName') {$metaContent.SourceName} else {''} 
-            $version = if($metaContent.PSObject.properties.name -match 'Version') {$metaContent.Version} else {''}
+            $jsonDll = [Microsoft.PowerShell.CoreCLR.AssemblyExtensions]::LoadFrom($PSScriptRoot + "\Json.coreclr.dll")
+            $jsonParser = $jsonDll.GetTypes() | Where-Object name -match jsonparser
+            $metaContentParsed = $jsonParser::FromJson($metaContent)
 
-            $fastPackageReference = $name +
-                                    $separator + $version +
-                                    $separator + $source
-
-            $dockerSWID = @{
-                Name = $name
-                version = $version
-                Source = $source
-                versionScheme = "MultiPartNumeric"
-                fastPackageReference = $fastPackageReference
-            }
-
-            return New-SoftwareIdentity @dockerSWID
+            $source = if($metaContentParsed.ContainsKey('SourceName')) {$metaContentParsed.SourceName} else {'Unable To Retrieve Source from metadata.json'}
+            $version = if($metaContentParsed.ContainsKey('Version')) {$metaContentParsed.Version} else {'Unable To Retrieve Version from metadata.json'}
+        }
+        else
+        {
+            $metaContentParsed = (Get-Content -Path $env:ProgramFiles\Docker\$script:MetadataFileName) | ConvertFrom-Json
+            if($metaContentParsed)
+            {
+                $source = if($metaContentParsed.PSObject.properties.name -contains 'SourceName') {$metaContentParsed.SourceName} else {'Unable To Retrieve Source from metadata.json'}
+                $version = if($metaContentParsed.PSObject.properties.name -contains 'Version') {$metaContentParsed.Version} else {'Unable To Retrieve Version from metadata.json'}
+            }            
         }
     }
-
-    if(Test-Path $env:ProgramFiles\Docker\dockerd.exe)
+    elseif(Test-Path $script:pathDockerD)
     {
         $dockerVersion = & "$env:ProgramFiles\Docker\dockerd.exe" --version
         $resultArr = $dockerVersion -split ","
         $version = ($resultArr[0].Trim() -split " ")[2]
-        #$build = ($resultArr[1].Trim() -split " ")[1]
-        $source = 'Unable To Retrieve Source'
-        $fastPackageReference = $name +
-                                    $separator + $version +
-                                    $separator + $source
-
-        $dockerSWID = @{
-            Name = $name
-            version = $version
-            Source = $source
-            versionScheme = "MultiPartNumeric"
-            fastPackageReference = $fastPackageReference
-        }   
-
-        return New-SoftwareIdentity @dockerSWID
+        $source = ' '
     }
     else
     {
         return $null
     }
+
+    $fastPackageReference = $name +
+                                    $separator + $version +
+                                    $separator + $source
+
+    $dockerSWID = @{
+        Name = $name
+        version = $version
+        Source = $source
+        versionScheme = "MultiPartNumeric"
+        fastPackageReference = $fastPackageReference
+    }
+
+    return New-SoftwareIdentity @dockerSWID
 }
 
 #endregion One-Get Required Functions
@@ -474,12 +462,12 @@ function SaveInfo
     # Create a file
     $metaFileInfo = New-Item -ItemType File -Path $env:ProgramFiles\docker -Name $script:MetadataFileName -Force
 
-    if($null -eq $metaFileInfo)
+    if(-not $metaFileInfo)
     {
         # TODO: Handle File not created scenario
     }
 
-    if(Test-Path $env:ProgramFiles\Docker\dockerd.exe)
+    if(Test-Path $script:pathDockerD)
     {
         $dockerVersion = & "$env:ProgramFiles\Docker\dockerd.exe" --version
         $resultArr = $dockerVersion -split ","
@@ -496,18 +484,18 @@ function SaveInfo
 
 function UninstallHelper
 {
-    if(-not (Test-AdminPriviledge))
+    if(-not (Test-AdminPrivilege))
     {
         ThrowError -CallerPSCmdlet $PSCmdlet `
-                    -ExceptionName "System.ArgumentException" `
-                    -ExceptionMessage "Installing docker needs administrator mode." `
-                    -ErrorId "AdminMode" `
+                    -ExceptionName "InvalidOperationException" `
+                    -ExceptionMessage "Administrator rights are required to install docker." `
+                    -ErrorId "AdminPrivilegesAreRequiredForInstall" `
                     -ErrorCategory InvalidOperation
     }
 
     # Stop docker service
-    $dockerService = Get-Service | Where-Object {$_.Name -eq "docker"}
-    if($null -eq $dockerService)
+    $dockerService = get-service -Name Docker -WarningAction SilentlyContinue -ErrorAction SilentlyContinue
+    if(-not $dockerService)
     {
         # Docker service is not available
         Write-Error "Docker Service is not available."
@@ -519,7 +507,7 @@ function UninstallHelper
         $null = stop-service docker
     }
 
-    if(Test-Path $env:ProgramFiles\Docker\dockerd.exe)
+    if(Test-Path $script:pathDockerD)
     {
         Write-Verbose "Unregistering the docker service"
         $null = & "$env:ProgramFiles\Docker\dockerd.exe" --unregister-service
@@ -542,21 +530,38 @@ function InstallContainer
 {
     if(IsNanoServer)
     {        
-        HandleProvider
+        if(HandleProvider)
+        {
+            $containerExists = get-package -providername NanoServerPackage -Name *container* -ErrorAction SilentlyContinue -WarningAction SilentlyContinue
 
-        # Find Container Package
-        $containerPackage = Find-NanoServerPackage -Name *Container* -ErrorAction SilentlyContinue -WarningAction SilentlyContinue
+            if($containerExists)
+            {
+                Write-Verbose "Containers package is already installed. Skipping the install."
+                return
+            }
 
-        if($null -eq $containerPackage)
+            # Find Container Package
+            $containerPackage = Find-NanoServerPackage -Name *Container* -ErrorAction SilentlyContinue -WarningAction SilentlyContinue
+
+            if(-not $containerPackage)
+            {
+                ThrowError -ExceptionName "System.ArgumentException" `
+                            -ExceptionMessage "Unable to find the Containers Package from NanoServerPackage Module." `
+                            -ErrorId "PackageNotFound" `
+                            -CallerPSCmdlet $PSCmdlet `
+                            -ErrorCategory InvalidOperation
+            }
+
+            $null = $containerPackage | Install-NanoServerPackage -Force -ErrorAction SilentlyContinue -WarningAction SilentlyContinue
+        }
+        else
         {
             ThrowError -ExceptionName "System.ArgumentException" `
-                        -ExceptionMessage "Unable to find the Containers Package from NanoServerPackage Module." `
-                        -ErrorId "PackageNotFound" `
-                        -CallerPSCmdlet $PSCmdlet `
-                        -ErrorCategory InvalidOperation
+                            -ExceptionMessage "Unable to load the NanoServerPackage Module." `
+                            -ErrorId "ModuleNotFound" `
+                            -CallerPSCmdlet $PSCmdlet `
+                            -ErrorCategory InvalidOperation
         }
-
-        $null = $containerPackage | Install-NanoServerPackage -Force -ErrorAction SilentlyContinue -WarningAction SilentlyContinue
     }
     else
     {
@@ -578,15 +583,17 @@ function UninstallContainer
 
 function HandleProvider
 {
-    # Check if the nanoServerpackage provider is present
-    # if not download and install
-    if($null -eq (Get-PackageProvider -Name $script:nanoserverPackageProvider -ErrorAction SilentlyContinue -WarningAction SilentlyContinue))
-    {
-        $repositories = Get-PSRepository
-        if($null -eq $repositories){$null = Register-PSRepository -Default}
+    # Get the nanoServerpackage provider is present
+    $getnanoServerPackage = Get-PackageProvider -Name $script:nanoserverPackageProvider -ErrorAction SilentlyContinue -WarningAction SilentlyContinue
 
-        $nanoserverPackage = Find-Module -Name $script:nanoserverPackageProvider -ErrorAction SilentlyContinue -WarningAction SilentlyContinue
-        if($null -eq $nanoserverPackage)
+    # if not download and install
+    if(-not $getnanoServerPackage)
+    {
+        $repositories = Get-PSRepository -Name PSGallery -ErrorAction SilentlyContinue -WarningAction SilentlyContinue
+        if(-not $repositories){$null = Register-PSRepository -Default}
+
+        $nanoserverPackage = Find-Module -Name $script:nanoserverPackageProvider -ErrorAction SilentlyContinue -WarningAction SilentlyContinue -Repository PSGallery
+        if(-not $nanoserverPackage)
         {
             ThrowError -ExceptionName "System.ArgumentException" `
                         -ExceptionMessage "Unable to find the Containers Package from NanoServerPackage Module." `
@@ -600,45 +607,95 @@ function HandleProvider
     }
     
     # Import the provider
-    $null = Import-PackageProvider -Name $script:nanoserverPackageProvider -Force
-    $null = Import-module -Name $script:nanoserverPackageProvider -Force
+    $importProvider = Import-PackageProvider -Name $script:nanoserverPackageProvider -Force -ErrorAction SilentlyContinue -WarningAction SilentlyContinue
+    $importModule = Import-module -Name $script:nanoserverPackageProvider -Force -ErrorAction SilentlyContinue -WarningAction SilentlyContinue -PassThru
+
+    return ($importModule -and $importProvider)
 }
 
 function Update-PathVar
 {
-    if(IsNanoServer)
+    $NameOfPath = "Path"
+    
+    # Set the environment variable in the Local Process
+    $envVars = [Environment]::GetEnvironmentVariable($NameOfPath)
+    $envArr = @()
+    $envArr = $envVars -split ';'
+    $envFlag = $true
+    foreach($envItem in $envArr) 
     {
-        $currPath = [Environment]::GetEnvironmentVariable("Path")
-        if(($currPath -split ';') -contains $script:pathVar) {return}
-        $null = [Environment]::SetEnvironmentVariable("Path", $env:Path + ";" + $script:pathVar)
+        if($envItem.Trim() -match [regex]::Escape($script:pathVar)) 
+        {
+            $envFlag = $false
+            break
+        }
     }
-    else
+    if($envFlag)
     {
-        $currPath = [Environment]::GetEnvironmentVariable("Path", [EnvironmentVariableTarget]::Machine)
-        if(($currPath -split ';') -contains $script:pathVar) {return}
-        $null = [Environment]::SetEnvironmentVariable("Path", $env:Path + ";" + $script:pathVar, [EnvironmentVariableTarget]::Machine)
+        $null = [Environment]::SetEnvironmentVariable($NameOfPath, $envVars + ";" + $script:pathVar)
+    }
+
+    # Set the environment variable in the Machine
+    $currPath = (Microsoft.PowerShell.Management\Get-ItemProperty -Path $script:SystemEnvironmentKey -Name $NameOfPath -ErrorAction SilentlyContinue).Path    
+    $currArr = @()
+    $currArr = $currPath -split ';'
+    $currFlag = $true
+    foreach($currItem in $currArr)
+    {
+        if($currItem.Trim() -match [regex]::Escape($script:pathVar)) 
+        {
+            $currFlag = $true
+            break
+        }
+    }
+    if($currFlag)
+    {
+        $null = Microsoft.PowerShell.Management\Set-ItemProperty $script:SystemEnvironmentKey -Name $NameOfPath -Value ($currPath + ";" + $script:pathVar)
     }
 }
 
 function Remove-PathVar
 {
-    if(IsNanoServer)
-    {
-        $currPath = [Environment]::GetEnvironmentVariable("Path")
-        if($currPath -notmatch $script:pathVar) {return}
+    $NameOfPath = "Path"
 
-        $newPath = $currPath -replace ($script:pathVar),$null
-        $newPath = $newPath -replace (";;"),";"
-        $null = [Environment]::SetEnvironmentVariable("Path", $newPath)
+    # Set the environment variable in the Local Process
+    $envVars = [Environment]::GetEnvironmentVariable($NameOfPath)
+    $envArr = @()
+    $envArr = $envVars -split ';'
+    $envFlag = $false
+    foreach($envItem in $envArr) 
+    {
+        if($envItem.Trim() -match [regex]::Escape($script:pathVar))
+        {
+            $envFlag = $true
+            break
+        }
     }
-    else
+    if($envFlag)
     {
-        $currPath = [Environment]::GetEnvironmentVariable("Path", [EnvironmentVariableTarget]::Machine)
-        if(($currPath -split ';') -notcontains $script:pathVar) {return}
+        $newPath = $envVars -replace [regex]::Escape($script:pathVar),$null
+        $newPath = $newPath -replace (";;"), ";"
+        $null = [Environment]::SetEnvironmentVariable($NameOfPath, $newPath)
+    }
 
-        $newPath = $currPath -replace [regex]::Escape($script:pathVar),$null
-        $newPath = $newPath -replace (";;"),";"
-        $null = [Environment]::SetEnvironmentVariable("Path", $newPath, [EnvironmentVariableTarget]::Machine)        
+    # Set the environment variable in the Machine
+    $currPath = (Microsoft.PowerShell.Management\Get-ItemProperty -Path $script:SystemEnvironmentKey -Name $NameOfPath -ErrorAction SilentlyContinue).Path
+    $currArr = @()
+    $currArr = $currPath -split ';'
+    $currFlag = $false
+    foreach($currItem in $currArr)
+    {
+        if($currItem.Trim() -match [regex]::Escape($script:pathVar))
+        {
+            $currFlag = $true
+            break
+        }
+    }
+    if($currFlag)
+    {
+        $newPath = $envVars -replace [regex]::Escape($script:pathVar),$null
+        $newPath = $newPath -replace (";;"), ";"
+        $null = Microsoft.PowerShell.Management\Set-ItemProperty $script:SystemEnvironmentKey -Name $NameOfPath -Value $newPath
     }
 }
 
@@ -774,7 +831,7 @@ function Find-FromUrl
 
     [String] $searchFileContent = Get-Content -Path $searchFile
 
-    if($null -eq $searchFileContent)
+    if(-not $searchFileContent)
     {
         return $null
     }   
@@ -803,7 +860,7 @@ function Find-FromUrl
     # if a particular version is requested, provide that version only
     if($RequiredVersion)
     {
-        if($versions.PSObject.properties.name -match $RequiredVersion)
+        if($versions.PSObject.properties.name -contains $RequiredVersion)
         {
             $obj = Get-ResultObject -JSON $versions -Version $RequiredVersion
             $searchResults += $obj
@@ -925,7 +982,7 @@ function Get-ResultObject
     if($JSON.$Version)
     {   
         $description = ""
-        if($versions.$Version.Psobject.properties.name -match "notes")
+        if($versions.$Version.Psobject.properties.name -contains "notes")
         {
             $URL = $versions.$Version.'notes'
             if($URL.StartsWith("https://"))
@@ -1000,7 +1057,7 @@ function Resolve-FwdLink
     
     $response = Get-HttpResponse -Uri $Uri
 
-    if($null -eq $response)
+    if(-not $response)
     {
         # This is not a forward link. Return the original URI
         return $Uri
@@ -1189,7 +1246,7 @@ function Resolve-PackageSource
                 Microsoft.PowerShell.Core\ForEach-Object {
                     $moduleSource = $script:DockerSources[$_.Key]
 
-                    if($moduleSource.PSObject.properties.name -match 'SourceLocation')
+                    if($moduleSource.PSObject.properties.name -contains 'SourceLocation')
                     {
                         $resolvedUrl = Resolve-FwdLink -Uri $moduleSource.SourceLocation
                         $moduleSource.SourceLocation = $resolvedUrl
@@ -1282,6 +1339,8 @@ function DownloadPackageHelper
     [string[]] $splitterArray = @("$separator")
     [string[]] $resultArray = $fastPackageReference.Split($splitterArray, [System.StringSplitOptions]::None)
 
+    if((-not $resultArray) -or ($resultArray.count -ne 8)){Write-Debug "Fast package reference doesn't have required parts."}
+
     $source = $resultArray[0]
     $name = $resultArray[1]
     $version = $resultArray[2]
@@ -1360,6 +1419,8 @@ function DownloadPackageHelper
         $null = remove-item -Path $fullDestinationPath -Force
         Write-Error -Message "Cannot verify the file SHA256. Deleting the file."                
     }
+
+    Write-Verbose "Hash verified!"
 
     $savedWindowsPackageItem = Microsoft.PowerShell.Utility\New-Object PSCustomObject -Property ([ordered]@{
                         SourceName = $source
@@ -1562,7 +1623,7 @@ function VerifyHashCheck
     return ($hash -ieq $fileSha256)
 }
 
-function Test-AdminPriviledge
+function Test-AdminPrivilege
 {
     [CmdletBinding()]
     [OutputType([bool])]
@@ -1614,9 +1675,9 @@ function Install-NuGetClientBinary
         return
     }
 
-    $InstallNuGetProviderShouldContinueQuery = "MicrosoftDockerProvider requires NuGet provider to interact with NuGet-based repositories. The NuGet provider must be available in '{0}' or '{1}'. You can also install the NuGet provider by running 'Install-PackageProvider -Name NuGet -Force'. Do you want MicrosoftDockerProvider to install and import the NuGet provider now?"
+    $InstallNuGetProviderShouldContinueQuery = "DockerMsftProvider requires NuGet provider. The NuGet provider must be available in '{0}' or '{1}'. You can also install the NuGet provider by running 'Install-PackageProvider -Name NuGet -Force'. Do you want DockerMsftProvider to install and import the NuGet provider now?"
     $InstallNuGetProviderShouldContinueCaption = "NuGet provider is required to continue"
-    $CouldNotInstallNuGetProvider = "NuGet provider is required to interact with NuGet-based repositories. Please ensure that NuGet provider is installed."
+    $CouldNotInstallNuGetProvider = "NuGet provider is required. Please ensure that NuGet provider is installed."
     $DownloadingNugetProvider = "Installing NuGet provider."
 
     $bootstrapNuGetProvider = (-not $script:NuGetProvider)
@@ -1668,7 +1729,7 @@ function Install-NuGetClientBinary
             Write-Verbose -Message $DownloadingNugetProvider
 
             $scope = 'CurrentUser'
-            if(Test-AdminPriviledge)
+            if(Test-AdminPrivilege)
             {
                 $scope = 'AllUsers'
             }

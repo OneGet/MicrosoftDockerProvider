@@ -85,3 +85,4 @@ Updates current installation of docker with the requested version
 
 ### Dependencies
 1. Nuget binaries
+2. Update: KB3176936 needs to be installed on your machine

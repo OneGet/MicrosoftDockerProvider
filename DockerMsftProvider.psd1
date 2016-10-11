@@ -12,7 +12,7 @@
 RootModule = 'DockerMsftProvider.psm1'
 
 # Version number of this module.
-ModuleVersion = '0.1.0.2'
+ModuleVersion = '0.1.0.3'
 
 # ID used to uniquely identify this module
 GUID = '5beed3da-526b-47eb-9197-29c6a7214e4e'
@@ -42,7 +42,11 @@ PrivateData = @{
     PSData = @{
         # Tags applied to this module. These help with module discovery in online galleries.
         Tags = @('PackageManagement', 'Provider')
-
+        ProjectUri = 'https://github.com/OneGet/MicrosoftDockerProvider'
+        LicenseUri = ''
+        ReleaseNotes = @'
+- Docker Provider to find, save and install docker on windows.
+'@
     } # End of PSData hashtable
 
 } # End of PrivateData hashtable

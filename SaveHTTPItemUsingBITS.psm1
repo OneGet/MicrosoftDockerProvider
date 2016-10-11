@@ -9,6 +9,8 @@
 
 function Save-HTTPItemUsingBitsTransfer
 {
+    [OutputType([System.String])]
+    
     [CmdletBinding()]
     param(
        [Parameter(Mandatory=$true)]

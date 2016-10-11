@@ -871,7 +871,7 @@ function Find-FromUrl
         }
     }
 
-    $savedVersion = $script:SemVerTypeName::new('0.0.0')
+    $savedVersion = New-Object $script:SemVerTypeName -ArgumentList '0.0.0'
     
     # version requirement
     # compare different versions
@@ -914,39 +914,45 @@ function Find-FromUrl
                 }
             }
 
-            $thisVersion = $script:SemVerTypeName::new($versionValue)
+            $thisVersion = New-Object $script:SemVerTypeName -ArgumentList $versionValue
 
             if($MinimumVersion)
             {
-                if($thisVersion -ge $MinimumVersion)
+                $convertedMinimumVersion =  New-Object $script:SemVerTypeName -ArgumentList $MinimumVersion
+                if($thisVersion -ge $convertedMinimumVersion)
                 {
-                    if($thisVersion -ge $savedVersion) {$savedVersion = $thisVersion}
                     $toggle = $true
                 }
                 else 
                 {
                     $toggle = $false
+                    continue
                 }
             }
 
             if($MaximumVersion)
             {
-                if($thisVersion -le $MaximumVersion)
+                $convertedMaximumVersion =  New-Object $script:SemVerTypeName -ArgumentList $MaximumVersion
+                if($thisVersion -le $convertedMaximumVersion)
                 {
-                    if($thisVersion -ge $savedVersion) {$savedVersion = $thisVersion}
                     $toggle = $true
                 }
-                else 
+                else
                 {
                     $toggle = $false
-                }              
+                    continue
+                }
+            }
+
+            if($toggle)
+            {
+                if($thisVersion -ge $savedVersion) {$savedVersion = $thisVersion}
             }
 
             if($AllVersions)
             {
                 if($toggle)
                 {
-
                     $obj = Get-ResultObject -JSON $versions -Version $versionValue
                     $searchResults += $obj
                 }
@@ -1241,20 +1247,13 @@ function Resolve-PackageSource
         $wildcardPattern = New-Object System.Management.Automation.WildcardPattern $moduleSourceName,$script:wildcardOptions
         $moduleSourceFound = $false
 
-        $script:DockerSources.GetEnumerator() | 
-            Microsoft.PowerShell.Core\Where-Object {$wildcardPattern.IsMatch($_.Key)} | 
-                Microsoft.PowerShell.Core\ForEach-Object {
-                    $moduleSource = $script:DockerSources[$_.Key]
-
-                    if($moduleSource.PSObject.properties.name -contains 'SourceLocation')
-                    {
-                        $resolvedUrl = Resolve-FwdLink -Uri $moduleSource.SourceLocation
-                        $moduleSource.SourceLocation = $resolvedUrl
-                    }
-                    
-                    $packageSource = New-PackageSourceFromModuleSource -ModuleSource $moduleSource
-                    Write-Output -InputObject $packageSource
-                    $moduleSourceFound = $true
+        $script:DockerSources.GetEnumerator() |  
+            Microsoft.PowerShell.Core\Where-Object {$wildcardPattern.IsMatch($_.Key)} |  
+                Microsoft.PowerShell.Core\ForEach-Object { 
+                    $moduleSource = $script:DockerSources[$_.Key] 
+                    $packageSource = New-PackageSourceFromModuleSource -ModuleSource $moduleSource 
+                    Write-Output -InputObject $packageSource 
+                    $moduleSourceFound = $true 
                 }
 
         if(-not $moduleSourceFound)

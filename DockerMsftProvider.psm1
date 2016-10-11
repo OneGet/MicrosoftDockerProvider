@@ -292,7 +292,7 @@ function Install-Package
 
         if(Test-Path $script:pathDockerD)
         {
-            Write-Verbose "Trying to start the docker service..."
+            Write-Verbose "Trying to enable the docker service..."
             $service = get-service -Name Docker -WarningAction SilentlyContinue -ErrorAction SilentlyContinue
             if(-not $service)
             {
@@ -326,7 +326,8 @@ function Install-Package
     # Update the path variable
     $null = Update-PathVar
 
-    Write-Verbose "A restart is required for this installation. Please restart your machine."
+    Write-Warning "A restart is required to start docker service. Please restart your machine."
+    Write-Warning "After the restart please start the docker service."
 
     Write-Output $downloadOutput
 }
@@ -528,6 +529,8 @@ function UninstallHelper
 
 function InstallContainer
 {
+    Write-Verbose "Installing Containers..."
+
     if(IsNanoServer)
     {        
         if(HandleProvider)
@@ -567,6 +570,8 @@ function InstallContainer
     {
         $null = Install-WindowsFeature containers
     }
+
+    Write-Verbose "Installed containers"
 }
 
 function UninstallContainer
@@ -1162,7 +1167,6 @@ function Get-DynamicOptions
     {
         Install 
         {
-            Write-Output -InputObject (New-DynamicOption -Category $category -Name "NoRestart" -ExpectedType Switch -IsRequired $false)
             Write-Output -InputObject (New-DynamicOption -Category $category -Name "Update" -ExpectedType Switch -IsRequired $false)
         }
     }

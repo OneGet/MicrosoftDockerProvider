@@ -2,8 +2,8 @@
 #### Install a Docker image from the online Package repository
 
 The Docker installer for Windows is now available in an online package repository.  They can be found and installed using the Docker provider of PackageManagement (a.k.a. <a href="http://www.oneget.org">OneGet</a>) PowerShell module.  The provider needs to be installed before using it. The following PowerShell cmdlets can be used to install the provider.
-* Import-Module -Name Docker -Force
-* Import-Packageprovider -Name Docker -Force
+* Import-Module -Name DockerMsftProvider -Force
+* Import-Packageprovider -Name DockerMsftProvider -Force
 
 Once the provider is installed and imported, you can search, download, or install Docker using OneGet PowerShell cmdlets:
 * Find-Package
@@ -61,6 +61,10 @@ Updates current installation of docker with the requested version
 
 ##### Example 1: Update docker
 	Install-Package -Name docker -ProviderName DockerMsftProvider -Verbose -Update
+
+### Manual Steps
+    Once docker is installed, you will need to restart the machine
+    After the machine is restarted, docker service needs to be in the running state
 
 ### Version
 0.1.0.0

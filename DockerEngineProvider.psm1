@@ -3,7 +3,7 @@
 #
 # Copyright (c) Microsoft Corporation. All rights reserved.
 #
-# DockerMsftProvider
+# DockerEngineProvider
 #
 #########################################################################################
 
@@ -11,7 +11,7 @@ Microsoft.PowerShell.Core\Set-StrictMode -Version Latest
 
 #region variables
 
-$script:Providername = "DockerMsftProvider"
+$script:Providername = "DockerEngineProvider"
 $script:DockerSources = $null
 $script:location_modules = Microsoft.PowerShell.Management\Join-Path -Path $env:TEMP -ChildPath $script:ProviderName
 $script:location_sources= Microsoft.PowerShell.Management\Join-Path -Path $env:LOCALAPPDATA -ChildPath $script:ProviderName
@@ -1678,7 +1678,7 @@ function Install-NuGetClientBinary
         return
     }
 
-    $InstallNuGetProviderShouldContinueQuery = "DockerMsftProvider requires NuGet provider. The NuGet provider must be available in '{0}' or '{1}'. You can also install the NuGet provider by running 'Install-PackageProvider -Name NuGet -Force'. Do you want DockerMsftProvider to install and import the NuGet provider now?"
+    $InstallNuGetProviderShouldContinueQuery = "DockerEngineProvider requires NuGet provider. The NuGet provider must be available in '{0}' or '{1}'. You can also install the NuGet provider by running 'Install-PackageProvider -Name NuGet -Force'. Do you want DockerEngineProvider to install and import the NuGet provider now?"
     $InstallNuGetProviderShouldContinueCaption = "NuGet provider is required to continue"
     $CouldNotInstallNuGetProvider = "NuGet provider is required. Please ensure that NuGet provider is installed."
     $DownloadingNugetProvider = "Installing NuGet provider."

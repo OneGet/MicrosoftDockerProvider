@@ -34,6 +34,8 @@ $script:NuGetBinaryLocalAppDataPath="$env:LOCALAPPDATA\PackageManagement\Provide
 $script:NuGetProvider = $null
 $script:nanoserverPackageProvider = "NanoServerPackage"
 $script:hotFixID = 'KB3176936'
+$script:minOsMajorBuild = 14393
+$script:minOSRevision= 206
 $script:MetadataFileName = 'metadata.json'
 $script:serviceName = "docker"
 $script:SemVerTypeName = 'Microsoft.PackageManagement.Provider.Utility.SemanticVersion'
@@ -174,13 +176,16 @@ function Install-Package
                     -ErrorCategory InvalidOperation
     }
 
-    # Check if the OS has the required KB(s)
-    $hotFix = Get-CimInstance -Query "select * from win32_quickfixengineering where HotFixID = '$script:hotFixID'"
-    if(-not $hotfix)
+    $osVersion = (Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\').CurrentBuildNumber
+    $osRevision = (Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\').UBR
+    #Ensure that the host is either running a build newer than Windows Server 2016 GA or
+    #if running Windows Server 2016 GA that it has a revision greater than 206 (KB3176936)
+    if (($osVersion -lt $script:minOsMajorBuild) -or 
+       (($osVersion -eq $script:minOsMajorBuild) -and ($osRevision -lt $script:minOsRevision)))
     {
         ThrowError -CallerPSCmdlet $PSCmdlet `
                     -ExceptionName "InvalidOperationException" `
-                    -ExceptionMessage "$script:hotFixID is required to install docker" `
+                    -ExceptionMessage "$script:hotFixID or later is required to install docker" `
                     -ErrorId "RequiredWindowsUpdateNotInstalled" `
                     -ErrorCategory InvalidOperation
         return

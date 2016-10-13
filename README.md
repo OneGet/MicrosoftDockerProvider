@@ -83,6 +83,12 @@ Updates current installation of docker with the requested version
 #### 0.1.0.3
 	Bug fixes
 
+#### 1.0.0.0
+	Public release
+
+#### 1.0.0.1
+	Added OS version check instead of KB check
+
 ### Dependencies
 1. Nuget binaries
-2. Update: KB3176936 needs to be installed on your machine
+2. Update: KB3176936 or later needs to be installed on your machine

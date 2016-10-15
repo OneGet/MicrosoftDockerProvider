@@ -65,6 +65,8 @@ Updates current installation of docker with the requested version
 ### Manual Steps
     Once docker is installed, you will need to restart the machine
     After the machine is restarted, docker service needs to be in the running state
+	
+	After you have installed the required KB (KB3176936 or higher) you will need to restart the machine 
 
 ### Version
 0.1.0.0

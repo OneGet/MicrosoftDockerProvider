@@ -341,8 +341,7 @@ function Install-Package
 
     if($script:restartRequired)
     {
-        Write-Warning "A restart is required to start docker service. Please restart your machine."
-        Write-Warning "After the restart please start the docker service."
+        Write-Warning "A restart is required to enable the containers feature. Please restart your machine."
     }
 
     Write-Output $downloadOutput

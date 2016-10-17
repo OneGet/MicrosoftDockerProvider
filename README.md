@@ -91,6 +91,9 @@ Updates current installation of docker with the requested version
 #### 1.0.0.1
 	Added OS version check instead of KB check
 
+#### 1.0.0.2
+	Updated the restart message after install
+
 ### Dependencies
 1. Nuget binaries
 2. Update: KB3176936 or later needs to be installed on your machine

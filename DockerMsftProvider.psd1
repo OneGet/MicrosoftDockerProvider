@@ -12,7 +12,7 @@
 RootModule = 'DockerMsftProvider.psm1'
 
 # Version number of this module.
-ModuleVersion = '1.0.0.1'
+ModuleVersion = '1.0.0.2'
 
 # ID used to uniquely identify this module
 GUID = '5beed3da-526b-47eb-9197-29c6a7214e4e'

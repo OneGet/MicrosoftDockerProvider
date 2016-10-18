@@ -93,6 +93,7 @@ Updates current installation of docker with the requested version
 
 #### 1.0.0.2
 	Updated the restart message after install
+	Update the logging while uninstall
 
 ### Dependencies
 1. Nuget binaries

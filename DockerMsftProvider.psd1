@@ -43,7 +43,7 @@ PrivateData = @{
         # Tags applied to this module. These help with module discovery in online galleries.
         Tags = @('PackageManagement', 'Provider')
         ProjectUri = 'https://github.com/OneGet/MicrosoftDockerProvider'
-        LicenseUri = ''
+        LicenseUri = 'https://github.com/OneGet/MicrosoftDockerProvider/blob/developer/LICENSE'
         ReleaseNotes = @'
 - Docker Provider to find, save and install docker on windows.
 '@

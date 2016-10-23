@@ -47,6 +47,7 @@ You can download and save Docker installer without installation, using Save-Pack
 
 #### Get docker
 
+
 ##### Example 1: Inventory docker installation on the local machine.
 	 Get-Package –ProviderName DockerMsftProvider
 
@@ -96,5 +97,13 @@ Updates current installation of docker with the requested version
 	Update the logging while uninstall
 
 ### Dependencies
-1. Nuget binaries
-2. Update: KB3176936 or later needs to be installed on your machine
+* 1. Nuget binaries
+* 2. Update: KB3176936 or later needs to be installed on your machine
+
+### Not supported scenarios
+* 1. We use BITs for downloading purposes. Currently the following scenarios are not supported by BITs:
+	* 1.1. Behind a proxy
+	* 1.2. Powershell Direct
+	* 1.3. SSH remoting
+	* Note: Please use WinRM based Powershell Remoting.
+

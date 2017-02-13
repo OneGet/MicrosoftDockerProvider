@@ -11,6 +11,7 @@ The Docker installer for Windows is now available in an online package repositor
 ##### Step 2: Install Docker
 *New installation:*  
 `Install-Package -Name docker -ProviderName DockerMsftProvider -Verbose`  
+
 *Upgrade to the latest version of docker:*  
 `Install-Package -Name docker -ProviderName DockerMsftProvider -Verbose -Update`
 

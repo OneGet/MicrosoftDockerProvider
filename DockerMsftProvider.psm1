@@ -583,7 +583,13 @@ function InstallContainer
     }
     else
     {
-        $containerExists = Get-WindowsFeature -Name Containers
+        switch(Get-wmiobject -class win32_operatingsystem | select-object -ExpandProperty Caption ){                
+            'Microsoft Windows 10' {
+                $containerExists = Get-WindowsOptionalFeature -Online -FeatureName Containers | 
+                Select-object -Property *,@{name='Installed';expression={$_.State -eq 'Enabled'}}
+            }
+            Default {$containerExists = Get-WindowsFeature -Name Containers}
+        }
         if($containerExists -and $containerExists.Installed)
         {
             Write-Verbose "Containers feature is already installed. Skipping the install."
@@ -592,7 +598,10 @@ function InstallContainer
         else
         {
             Write-Verbose "Installing Containers..."
-            $null = Install-WindowsFeature containers
+            switch(Get-wmiobject -class win32_operatingsystem | select-object -ExpandProperty Caption ){                
+                'Microsoft Windows 10' {$null = Enable-WindowsOptionalFeature -FeatureName Containers}
+                Default {$null = Install-WindowsFeature containers}
+            }
             $script:restartRequired = $true            
         }
     }
@@ -608,7 +617,11 @@ function UninstallContainer
     }
     else
     {
-        $null = Uninstall-WindowsFeature containers        
+        switch(Get-wmiobject -class win32_operatingsystem | select-object -ExpandProperty Caption ){
+            'Microsoft Windows 10' {$null = Disable-WindowsOptionalFeature -FeatureName Containers}
+            Default {$null = Uninstall-WindowsFeature containers        }
+        }
+        
     }
 }
 

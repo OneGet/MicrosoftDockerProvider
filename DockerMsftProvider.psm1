@@ -1541,7 +1541,7 @@ function DownloadFile
             Import-Module "$saveItemPath"
             $startTime = Get-Date
             Write-Verbose "About to download"
-            Save-HTTPItemUsingBitsTransfer -Uri $downloadURL `
+            Invoke-WebRequest -Uri $downloadURL `
                             -Destination $destination
 
             Write-Verbose "Finished downloading"

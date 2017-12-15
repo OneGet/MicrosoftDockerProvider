@@ -1,9 +1,19 @@
 ### Introduction
 #### Install a Docker image from the online Package repository
 
-The Docker installer for Windows is now available in an online package repository.  They can be found and installed using the Docker provider of PackageManagement (a.k.a. <a href="http://www.oneget.org">OneGet</a>) PowerShell module.  The provider needs to be installed before using it. The following PowerShell cmdlets can be used to install the provider.
-* Import-Module -Name DockerMsftProvider -Force
-* Import-Packageprovider -Name DockerMsftProvider -Force
+The Docker installer for Windows is now available in an online package repository.  They can be found and installed using the Docker provider of PackageManagement (a.k.a. <a href="http://www.oneget.org">OneGet</a>) PowerShell module.  **The provider needs to be installed before using it.** The following PowerShell cmdlets can be used to install the provider.
+
+##### Step 1: Install the OneGet docker provider
+
+1. `Import-Module -Name DockerMsftProvider -Force`
+2. `Import-Packageprovider -Name DockerMsftProvider -Force`
+
+##### Step 2: Install Docker
+*New installation:*  
+`Install-Package -Name docker -ProviderName DockerMsftProvider -Verbose`  
+
+*Upgrade to the latest version of docker:*  
+`Install-Package -Name docker -ProviderName DockerMsftProvider -Verbose -Update`
 
 Once the provider is installed and imported, you can search, download, or install Docker using OneGet PowerShell cmdlets:
 * Find-Package
@@ -46,6 +56,7 @@ You can download and save Docker installer without installation, using Save-Pack
 	Find-package –ProviderName DockerMsftProvider | Save-Package -Path .
 
 #### Get docker
+
 
 ##### Example 1: Inventory docker installation on the local machine.
 	 Get-Package –ProviderName DockerMsftProvider
@@ -91,6 +102,18 @@ Updates current installation of docker with the requested version
 #### 1.0.0.1
 	Added OS version check instead of KB check
 
+#### 1.0.0.2
+	Updated the restart message after install
+	Update the logging while uninstall
+
 ### Dependencies
-1. Nuget binaries
-2. Update: KB3176936 or later needs to be installed on your machine
+* 1. Nuget binaries
+* 2. Update: KB3176936 or later needs to be installed on your machine
+
+### Not supported scenarios
+* 1. We use BITs for downloading purposes. Currently the following scenarios are not supported by BITs:
+	* 1.1. Behind a proxy
+	* 1.2. Powershell Direct
+	* 1.3. SSH remoting
+	* Note: Please use WinRM based Powershell Remoting.
+

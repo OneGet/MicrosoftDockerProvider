@@ -584,7 +584,7 @@ function InstallContainer
     }
     else
     {
-        switch -regex (get-wmiobject -class win32_operatingsystem | select-object -ExpandProperty Caption ){                
+        switch -regex (Get-CimInstance -ClassName Win32_OperatingSystem | select-object -ExpandProperty Caption ){
             'Microsoft Windows 10' {
                 $containerExists = Get-WindowsOptionalFeature -Online -FeatureName Containers | 
                 Select-object -Property *,@{name='Installed';expression={$_.State -eq 'Enabled'}}
@@ -599,7 +599,7 @@ function InstallContainer
         else
         {
             Write-Verbose "Installing Containers..."
-            switch -regex (get-wmiobject -class win32_operatingsystem | select-object -ExpandProperty Caption ){                
+            switch -regex (Get-CimInstance -ClassName Win32_OperatingSystem | select-object -ExpandProperty Caption ){
                 'Microsoft Windows 10' {$null = Enable-WindowsOptionalFeature -FeatureName Containers}
                 Default {$null = Install-WindowsFeature containers}
             }
@@ -618,7 +618,7 @@ function UninstallContainer
     }
     else
     {
-        switch -regex (get-wmiobject -class win32_operatingsystem | select-object -ExpandProperty Caption ){
+        switch -regex (Get-CimInstance -ClassName Win32_OperatingSystem | select-object -ExpandProperty Caption ){
             'Microsoft Windows 10' {$null = Disable-WindowsOptionalFeature -FeatureName Containers}
             Default {$null = Uninstall-WindowsFeature containers        }
         }

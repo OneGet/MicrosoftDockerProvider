@@ -1538,8 +1538,6 @@ function DownloadFile
         if($downloadURL.StartsWith("https://"))
         {
             Write-Verbose "Downloading $downloadUrl to $destination"
-            $saveItemPath = $PSScriptRoot + "\SaveHTTPItemUsingBITS.psm1"
-            Import-Module "$saveItemPath"
             $startTime = Get-Date
             Write-Verbose "About to download"
             Invoke-WebRequest -Uri $downloadURL `

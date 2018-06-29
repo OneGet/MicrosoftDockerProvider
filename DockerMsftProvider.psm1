@@ -831,6 +831,27 @@ function Get-SourceList
     return $listOfSources
 }
 
+function Resolve-ChannelAlias
+{
+    param
+    (
+        [Parameter(Mandatory=$true)]
+        [psobject]
+        $Channels,
+
+        [Parameter(Mandatory=$true)]
+        [String]
+        $Channel
+    )
+
+    while ($Channels.$Channel.PSObject.Properties.Name -contains 'alias')
+    {
+        $Channel = $Channels.$Channel.alias
+    }
+
+    return $Channel
+}
+
 function Find-FromUrl
 {
     param
@@ -891,8 +912,6 @@ function Find-FromUrl
     $contents = $updatedContent | ConvertFrom-Json
     $channels = $contents.channels
     $versions = $contents.versions
-    $csName = $channels.cs.alias
-    $csVersion = $channels.$csName.version
     $channelValues = $channels | Get-Member -MemberType NoteProperty
     $searchResults = @()
 
@@ -902,10 +921,26 @@ function Find-FromUrl
         $Name = "*"
     }
 
+    # Set the default channel, allowing $RequiredVersion to override when set to a channel name.
+    $defaultChannel = 'cs'
+    if ($RequiredVersion)
+    {
+        foreach ($channel in $channelValues)
+        {
+            if ($RequiredVersion -eq $channel.Name)
+            {
+                $defaultChannel = $channel.Name
+                $RequiredVersion = $null
+                break
+            }
+        }
+    }
+
     # if no versions are mentioned, just provide the default version, i.e.: CS 
     if((-not ($MinimumVersion -or $MaximumVersion -or $RequiredVersion -or $AllVersions)))
     {
-        $RequiredVersion = $csVersion
+        $resolvedChannel = Resolve-ChannelAlias -Channels $channels -Channel $defaultChannel
+        $RequiredVersion = $channels.$resolvedChannel.version
     }
 
     # if a particular version is requested, provide that version only
@@ -928,16 +963,15 @@ function Find-FromUrl
     # compare different versions
     foreach($channel in $channelValues)
     {
-        if($channel.Name -eq "cs")
+        if ($channel.Name -eq $defaultChannel)
         {
             continue
         }
         else 
         {
             $dockerName = "Docker"
-            $versionName = $channel.Name
+            $versionName = Resolve-ChannelAlias -Channels $channels -Channel $channel.Name
             $versionValue = $channels.$versionName.version
-            if($versionName -eq $csName){$versionName = "cs"}
 
             $toggle = $false
 

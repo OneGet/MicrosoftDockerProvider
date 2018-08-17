@@ -584,8 +584,9 @@ function InstallContainer
     }
     else
     {
-        switch(Get-wmiobject -class win32_operatingsystem | select-object -ExpandProperty Caption ){                
-            'Microsoft Windows 10' {
+        [string] $OSCaption = Get-wmiobject -class win32_operatingsystem | select-object -ExpandProperty Caption
+        switch -WildCard ($OSCaption) {                
+            'Microsoft Windows 10*' {
                 $containerExists = Get-WindowsOptionalFeature -Online -FeatureName Containers | 
                 Select-object -Property *,@{name='Installed';expression={$_.State -eq 'Enabled'}}
             }
@@ -599,8 +600,8 @@ function InstallContainer
         else
         {
             Write-Verbose "Installing Containers..."
-            switch(Get-wmiobject -class win32_operatingsystem | select-object -ExpandProperty Caption ){                
-                'Microsoft Windows 10' {$null = Enable-WindowsOptionalFeature -FeatureName Containers}
+            switch -WildCard ($OSCaption) {                
+                'Microsoft Windows 10*' {$null = Enable-WindowsOptionalFeature -FeatureName Containers}
                 Default {$null = Install-WindowsFeature containers}
             }
             $script:restartRequired = $true            

@@ -619,9 +619,10 @@ function UninstallContainer
     }
     else
     {
-        switch(Get-wmiobject -class win32_operatingsystem | select-object -ExpandProperty Caption ){
-            'Microsoft Windows 10' {$null = Disable-WindowsOptionalFeature -FeatureName Containers}
-            Default {$null = Uninstall-WindowsFeature containers        }
+        [string] $OSCaption = Get-wmiobject -class win32_operatingsystem | select-object -ExpandProperty Caption
+        switch -WildCard ($OSCaption) {
+            'Microsoft Windows 10*' {$null = Disable-WindowsOptionalFeature -FeatureName Containers}
+            Default {$null = Uninstall-WindowsFeature containers}
         }
         
     }

@@ -13,9 +13,9 @@ Microsoft.PowerShell.Core\Set-StrictMode -Version Latest
 
 $script:Providername = "DockerMsftProvider"
 $script:DockerSources = $null
-$script:location_modules = Microsoft.PowerShell.Management\Join-Path -Path $env:TEMP -ChildPath $script:ProviderName
-$script:location_sources= Microsoft.PowerShell.Management\Join-Path -Path $env:LOCALAPPDATA -ChildPath $script:ProviderName
-$script:file_modules = Microsoft.PowerShell.Management\Join-Path -Path $script:location_sources -ChildPath "sources.txt"
+$script:location_modules = Join-Path -Path $env:TEMP -ChildPath $script:ProviderName
+$script:location_sources= Join-Path -Path $env:LOCALAPPDATA -ChildPath $script:ProviderName
+$script:file_modules = Join-Path -Path $script:location_sources -ChildPath "sources.txt"
 $script:DockerSearchIndex = "DockerSearchIndex.json"
 $script:Installer_Extension = "zip"
 $script:dockerURL = "https://go.microsoft.com/fwlink/?LinkID=825636&clcid=0x409"
@@ -24,9 +24,9 @@ $script:restartRequired = $false
 $script:isNanoServerInitialized = $false
 $script:isNanoServer = $false
 $script:SystemEnvironmentKey = 'HKLM:\System\CurrentControlSet\Control\Session Manager\Environment'
-$script:pathDockerRoot = Microsoft.PowerShell.Management\Join-Path -Path $env:ProgramFiles -ChildPath "Docker"
-$script:pathDockerD = Microsoft.PowerShell.Management\Join-Path -Path $script:pathDockerRoot -ChildPath "dockerd.exe"
-$script:pathDockerClient = Microsoft.PowerShell.Management\Join-Path -Path $script:pathDockerRoot -ChildPath "docker.exe"
+$script:pathDockerRoot = Join-Path -Path $env:ProgramFiles -ChildPath "Docker"
+$script:pathDockerD = Join-Path -Path $script:pathDockerRoot -ChildPath "dockerd.exe"
+$script:pathDockerClient = Join-Path -Path $script:pathDockerRoot -ChildPath "docker.exe"
 $script:wildcardOptions = [System.Management.Automation.WildcardOptions]::CultureInvariant -bor `
                           [System.Management.Automation.WildcardOptions]::IgnoreCase
 
@@ -203,6 +203,7 @@ function Install-Package
     $options = $request.Options
     $update = $false
     $force = $false
+    $isolationMode = ''
 
     if($options)
     {
@@ -215,6 +216,12 @@ function Install-Package
         {
             Write-Verbose "Updating the docker installation."
             $update = $true
+        }
+
+        if($options.ContainsKey('IsolationMode'))
+        {
+            $isolationMode = $options['IsolationMode']
+            Write-Verbose "Installing in $isolationMode isolation mode"
         }
 
         if($options.ContainsKey("Force"))
@@ -299,18 +306,28 @@ function Install-Package
         Write-Verbose "Trying to unzip : $destination"
         $null = Expand-Archive -Path $destination -DestinationPath $env:ProgramFiles -Force
 
-        # Rename the docker folder to become Docker
-        $dummyName = 'dummyName'
-        $null = Rename-Item -Path $script:pathDockerRoot -NewName $env:ProgramFiles\$dummyName
-        $null = Rename-Item -Path $env:ProgramFiles\$dummyName -NewName $script:pathDockerRoot     
-
         if(Test-Path $script:pathDockerD)
         {
             Write-Verbose "Trying to enable the docker service..."
             $service = get-service -Name Docker -WarningAction SilentlyContinue -ErrorAction SilentlyContinue
             if(-not $service)
             {
-                $null = New-Service -Name Docker -BinaryPathName "`"$script:pathDockerD`" --run-service"
+                switch($isolationMode)
+                {
+                    'hyperv'
+                    {
+                        $null = New-Service -Name Docker -BinaryPathName "`"$script:pathDockerD`" --run-service --exec-opt isolation=hyperv"
+                    }
+                    'process'
+                    {
+                        $null = New-Service -Name Docker -BinaryPathName "`"$script:pathDockerD`" --run-service --exec-opt isolation=process"
+                    }
+                    default
+                    {
+                        $null = New-Service -Name Docker -BinaryPathName "`"$script:pathDockerD`" --run-service"
+                    }
+                }
+
             }
         }
         else
@@ -382,6 +399,12 @@ function Uninstall-Package
     }
 
     New-SoftwareIdentity @dockerSWID
+
+    if($script:restartRequired)
+    {
+        Write-Warning "A restart is required to disable the containers feature. Please restart your machine."
+    }
+
 }
 
 #endregion One-Get Functions
@@ -584,30 +607,17 @@ function InstallContainer
     }
     else
     {
-        switch(Get-wmiobject -class win32_operatingsystem | select-object -ExpandProperty Caption ){                
-            'Microsoft Windows 10' {
-                $containerExists = Get-WindowsOptionalFeature -Online -FeatureName Containers | 
-                Select-object -Property *,@{name='Installed';expression={$_.State -eq 'Enabled'}}
-            }
-            Default {$containerExists = Get-WindowsFeature -Name Containers}
-        }
-        if($containerExists -and $containerExists.Installed)
+        $containerExists = (Get-WindowsOptionalFeature -FeatureName containers -Online).State -eq 'Enabled'
+        if($containerExists)
         {
             Write-Verbose "Containers feature is already installed. Skipping the install."
             return
         }
-        else
-        {
-            Write-Verbose "Installing Containers..."
-            switch(Get-wmiobject -class win32_operatingsystem | select-object -ExpandProperty Caption ){                
-                'Microsoft Windows 10' {$null = Enable-WindowsOptionalFeature -FeatureName Containers}
-                Default {$null = Install-WindowsFeature containers}
-            }
-            $script:restartRequired = $true            
-        }
+        Write-Verbose "Installing Containers feature..."
+        $script:restartRequired = (Enable-WindowsOptionalFeature -FeatureName containers -Online -NoRestart).RestartNeeded
     }
 
-    Write-Verbose "Installed containers"
+    Write-Verbose "Installed Containers feature"
 }
 
 function UninstallContainer
@@ -618,11 +628,7 @@ function UninstallContainer
     }
     else
     {
-        switch(Get-wmiobject -class win32_operatingsystem | select-object -ExpandProperty Caption ){
-            'Microsoft Windows 10' {$null = Disable-WindowsOptionalFeature -FeatureName Containers}
-            Default {$null = Uninstall-WindowsFeature containers        }
-        }
-        
+        $script:restartRequired = (Disable-WindowsOptionalFeature -FeatureName Containers -Online -NoRestart).RestartNeeded
     }
 }
 
@@ -681,7 +687,7 @@ function Update-PathVar
     }
 
     # Set the environment variable in the Machine
-    $currPath = (Microsoft.PowerShell.Management\Get-ItemProperty -Path $script:SystemEnvironmentKey -Name $NameOfPath -ErrorAction SilentlyContinue).Path    
+    $currPath = (Get-ItemProperty -Path $script:SystemEnvironmentKey -Name $NameOfPath -ErrorAction SilentlyContinue).Path    
     $currArr = @()
     $currArr = $currPath -split ';'
     $currFlag = $true
@@ -695,7 +701,7 @@ function Update-PathVar
     }
     if($currFlag)
     {
-        $null = Microsoft.PowerShell.Management\Set-ItemProperty $script:SystemEnvironmentKey -Name $NameOfPath -Value ($currPath + ";" + $script:pathDockerRoot)
+        $null = Set-ItemProperty $script:SystemEnvironmentKey -Name $NameOfPath -Value ($currPath + ";" + $script:pathDockerRoot)
 
         # Nanoserver needs a reboot to persist the registry change
         if(IsNanoServer)
@@ -730,7 +736,7 @@ function Remove-PathVar
     }
 
     # Set the environment variable in the Machine
-    $currPath = (Microsoft.PowerShell.Management\Get-ItemProperty -Path $script:SystemEnvironmentKey -Name $NameOfPath -ErrorAction SilentlyContinue).Path
+    $currPath = (Get-ItemProperty -Path $script:SystemEnvironmentKey -Name $NameOfPath -ErrorAction SilentlyContinue).Path
     $currArr = @()
     $currArr = $currPath -split ';'
     $currFlag = $false
@@ -746,13 +752,13 @@ function Remove-PathVar
     {
         $newPath = $envVars -replace [regex]::Escape($script:pathDockerRoot),$null
         $newPath = $newPath -replace (";;"), ";"
-        $null = Microsoft.PowerShell.Management\Set-ItemProperty $script:SystemEnvironmentKey -Name $NameOfPath -Value $newPath
+        $null = Set-ItemProperty $script:SystemEnvironmentKey -Name $NameOfPath -Value $newPath
     }
 }
 
 function Set-ModuleSourcesVariable
 {
-    if(Microsoft.PowerShell.Management\Test-Path $script:file_modules)
+    if(Test-Path $script:file_modules)
     {
         $script:DockerSources = DeSerialize-PSObject -Path $script:file_modules
     }
@@ -780,7 +786,7 @@ function DeSerialize-PSObject
         [Parameter(Mandatory=$true)]        
         $Path
     )
-    $filecontent = Microsoft.PowerShell.Management\Get-Content -Path $Path
+    $filecontent = Get-Content -Path $Path
     [System.Management.Automation.PSSerializer]::Deserialize($filecontent)    
 }
 
@@ -1218,7 +1224,7 @@ function Set-ModuleSourcesVariable
     [CmdletBinding()]
     param([switch]$Force)
 
-    if(Microsoft.PowerShell.Management\Test-Path $script:file_modules)
+    if(Test-Path $script:file_modules)
     {
         $script:DockerSources = DeSerialize-PSObject -Path $script:file_modules
     }
@@ -1252,6 +1258,9 @@ function Get-DynamicOptions
         Install 
         {
             Write-Output -InputObject (New-DynamicOption -Category $category -Name "Update" -ExpectedType Switch -IsRequired $false)
+
+            $allowedIsolationMode = @("hyperv","process")
+            Write-Output -InputObject (New-DynamicOption -Category $category -Name "IsolationMode" -ExpectedType String -IsRequired $false -permittedValues $allowedIsolationMode)
         }
     }
 }

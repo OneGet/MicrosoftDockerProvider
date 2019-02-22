@@ -310,7 +310,7 @@ function Install-Package
             $service = get-service -Name Docker -WarningAction SilentlyContinue -ErrorAction SilentlyContinue
             if(-not $service)
             {
-                $null = New-Service -Name Docker -BinaryPathName "`"$script:pathDockerD`" --run-service"
+                & "$script:pathDockerD" --register-service
             }
         }
         else

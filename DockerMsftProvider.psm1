@@ -316,15 +316,15 @@ function Install-Package
                 {
                     'hyperv'
                     {
-                        $null = New-Service -Name Docker -BinaryPathName "`"$script:pathDockerD`" --run-service --exec-opt isolation=hyperv"
+                        & "$script:pathDockerD" --exec-opt isolation=hyperv --register-service
                     }
                     'process'
                     {
-                        $null = New-Service -Name Docker -BinaryPathName "`"$script:pathDockerD`" --run-service --exec-opt isolation=process"
+                        & "$script:pathDockerD" --exec-opt isolation=process --register-service
                     }
                     default
                     {
-                        $null = New-Service -Name Docker -BinaryPathName "`"$script:pathDockerD`" --run-service"
+                        & "$script:pathDockerD" --register-service
                     }
                 }
 

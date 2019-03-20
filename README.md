@@ -105,6 +105,9 @@ Updates current installation of docker with the requested version
 #### 1.0.0.2
 	Updated the restart message after install
 	Update the logging while uninstall
+	
+#### 1.0.0.6
+	Fixed a bug in how dockerd was being registered as a service
 
 ### Dependencies
 * 1. Nuget binaries

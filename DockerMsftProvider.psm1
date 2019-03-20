@@ -310,7 +310,7 @@ function Install-Package
             $service = get-service -Name Docker -WarningAction SilentlyContinue -ErrorAction SilentlyContinue
             if(-not $service)
             {
-                $null = New-Service -Name Docker -BinaryPathName "`"$script:pathDockerD`" --run-service"
+                & "$script:pathDockerD" --register-service
             }
         }
         else
@@ -689,7 +689,7 @@ function Update-PathVar
     {
         if($currItem.Trim() -match [regex]::Escape($script:pathDockerRoot)) 
         {
-            $currFlag = $true
+            $currFlag = $false
             break
         }
     }
@@ -744,7 +744,7 @@ function Remove-PathVar
     }
     if($currFlag)
     {
-        $newPath = $envVars -replace [regex]::Escape($script:pathDockerRoot),$null
+        $newPath = $currPath -replace [regex]::Escape($script:pathDockerRoot),$null
         $newPath = $newPath -replace (";;"), ";"
         $null = Microsoft.PowerShell.Management\Set-ItemProperty $script:SystemEnvironmentKey -Name $NameOfPath -Value $newPath
     }
@@ -831,6 +831,27 @@ function Get-SourceList
     return $listOfSources
 }
 
+function Resolve-ChannelAlias
+{
+    param
+    (
+        [Parameter(Mandatory=$true)]
+        [psobject]
+        $Channels,
+
+        [Parameter(Mandatory=$true)]
+        [String]
+        $Channel
+    )
+
+    while ($Channels.$Channel.PSObject.Properties.Name -contains 'alias')
+    {
+        $Channel = $Channels.$Channel.alias
+    }
+
+    return $Channel
+}
+
 function Find-FromUrl
 {
     param
@@ -891,8 +912,6 @@ function Find-FromUrl
     $contents = $updatedContent | ConvertFrom-Json
     $channels = $contents.channels
     $versions = $contents.versions
-    $csName = $channels.cs.alias
-    $csVersion = $channels.$csName.version
     $channelValues = $channels | Get-Member -MemberType NoteProperty
     $searchResults = @()
 
@@ -902,10 +921,26 @@ function Find-FromUrl
         $Name = "*"
     }
 
+    # Set the default channel, allowing $RequiredVersion to override when set to a channel name.
+    $defaultChannel = 'cs'
+    if ($RequiredVersion)
+    {
+        foreach ($channel in $channelValues)
+        {
+            if ($RequiredVersion -eq $channel.Name)
+            {
+                $defaultChannel = $channel.Name
+                $RequiredVersion = $null
+                break
+            }
+        }
+    }
+
     # if no versions are mentioned, just provide the default version, i.e.: CS 
     if((-not ($MinimumVersion -or $MaximumVersion -or $RequiredVersion -or $AllVersions)))
     {
-        $RequiredVersion = $csVersion
+        $resolvedChannel = Resolve-ChannelAlias -Channels $channels -Channel $defaultChannel
+        $RequiredVersion = $channels.$resolvedChannel.version
     }
 
     # if a particular version is requested, provide that version only
@@ -928,16 +963,15 @@ function Find-FromUrl
     # compare different versions
     foreach($channel in $channelValues)
     {
-        if($channel.Name -eq "cs")
+        if ($channel.Name -eq $defaultChannel)
         {
             continue
         }
         else 
         {
             $dockerName = "Docker"
-            $versionName = $channel.Name
+            $versionName = Resolve-ChannelAlias -Channels $channels -Channel $channel.Name
             $versionValue = $channels.$versionName.version
-            if($versionName -eq $csName){$versionName = "cs"}
 
             $toggle = $false
 
@@ -1538,12 +1572,10 @@ function DownloadFile
         if($downloadURL.StartsWith("https://"))
         {
             Write-Verbose "Downloading $downloadUrl to $destination"
-            $saveItemPath = $PSScriptRoot + "\SaveHTTPItemUsingBITS.psm1"
-            Import-Module "$saveItemPath"
             $startTime = Get-Date
             Write-Verbose "About to download"
-            Save-HTTPItemUsingBitsTransfer -Uri $downloadURL `
-                            -Destination $destination
+            Invoke-WebRequest -Uri $downloadURL `
+                            -OutFile $destination
 
             Write-Verbose "Finished downloading"
             $endTime = Get-Date

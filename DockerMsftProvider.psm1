@@ -689,7 +689,7 @@ function Update-PathVar
     {
         if($currItem.Trim() -match [regex]::Escape($script:pathDockerRoot)) 
         {
-            $currFlag = $true
+            $currFlag = $false
             break
         }
     }
@@ -744,7 +744,7 @@ function Remove-PathVar
     }
     if($currFlag)
     {
-        $newPath = $envVars -replace [regex]::Escape($script:pathDockerRoot),$null
+        $newPath = $currPath -replace [regex]::Escape($script:pathDockerRoot),$null
         $newPath = $newPath -replace (";;"), ";"
         $null = Microsoft.PowerShell.Management\Set-ItemProperty $script:SystemEnvironmentKey -Name $NameOfPath -Value $newPath
     }

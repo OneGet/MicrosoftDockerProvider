@@ -109,6 +109,10 @@ Updates current installation of docker with the requested version
 #### 1.0.0.6
 	Fixed a bug in how dockerd was being registered as a service
 
+#### 1.0.0.7
+	Fixed a bug where system env vars would be mangled when installing/uninstalling Docker on top of another.
+	Fixed readme instruction formatting for easier copy/paste/execute
+
 ### Dependencies
 * 1. Nuget binaries
 * 2. Update: KB3176936 or later needs to be installed on your machine

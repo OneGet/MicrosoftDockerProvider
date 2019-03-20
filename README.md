@@ -33,10 +33,10 @@ Once the provider is installed and imported, you can search, download, or instal
 #### Search a Docker installer 
 
 ##### Example 1: Find the latest version of all available Docker installers. 
-	Find-Package –providerName DockerMsftProvider
+	Find-Package -providerName DockerMsftProvider
    
-##### Example 2: Search by version, according to –RequiredVersion, -MinimumVersion, and –MaximumVersion requirements. With –AllVersions parameter, all available versions of Docker installers are returned. Without it, only the latest version is returned.
-    Find-Package –providerName DockerMsftProvider –AllVersions
+##### Example 2: Search by version, according to -RequiredVersion, -MinimumVersion, and -MaximumVersion requirements. With -AllVersions parameter, all available versions of Docker installers are returned. Without it, only the latest version is returned.
+    Find-Package -providerName DockerMsftProvider -AllVersions
 
 #### Install docker
 
@@ -44,22 +44,22 @@ Once the provider is installed and imported, you can search, download, or instal
 	Install-Package -Name docker -ProviderName DockerMsftProvider -Verbose
 
 ##### Example 2: Install docker with pipeline result from the search cmdlets.	
-	Find-Package –ProviderName DockerMsftProvider | Install-Package -Verbose
+	Find-Package -ProviderName DockerMsftProvider | Install-Package -Verbose
 
 #### Download Docker
 You can download and save Docker installer without installation, using Save-Package. This cmdlet accepts pipeline result from the search cmdlets. If you have multiple sources, please provide the source for download.
 
 ##### Example 1: Download and save Docker installer to a directory that matches the wildcard path. The latest version will be saved if you do not specify the version requirements.	
-	Save-Package –ProviderName DockerMsftProvider -Name Docker -Path .\temp -MinimumVersion 1.2.3
+	Save-Package -ProviderName DockerMsftProvider -Name Docker -Path .\temp -MinimumVersion 1.2.3
 
 ##### Example 2: Download and save Docker installer from the search cmdlets.
-	Find-package –ProviderName DockerMsftProvider | Save-Package -Path .
+	Find-package -ProviderName DockerMsftProvider | Save-Package -Path .
 
 #### Get docker
 
 
 ##### Example 1: Inventory docker installation on the local machine.
-	 Get-Package –ProviderName DockerMsftProvider
+	 Get-Package -ProviderName DockerMsftProvider
 
 #### Uninstall docker
 Uninstalls Docker from the local machine.

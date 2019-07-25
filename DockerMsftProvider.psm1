@@ -301,7 +301,11 @@ function Install-Package
 
         # Rename the docker folder to become Docker
         $dummyName = 'dummyName'
-        $null = Rename-Item -Path $script:pathDockerRoot -NewName $env:ProgramFiles\$dummyName
+        while (!(Test-Path $env:ProgramFiles\$dummyName)) 
+		{ 
+			Start-Sleep 1
+			$null = Rename-Item -Path $script:pathDockerRoot -NewName $env:ProgramFiles\$dummyName -ErrorAction Continue -Verbose
+		}
         $null = Rename-Item -Path $env:ProgramFiles\$dummyName -NewName $script:pathDockerRoot     
 
         if(Test-Path $script:pathDockerD)

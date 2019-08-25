@@ -1178,7 +1178,10 @@ function Get-HttpResponse
     }
 
     $httpClient = New-Object System.Net.Http.HttpClient
-    $response = $httpclient.GetAsync($Uri)
+    $request = New-Object System.Net.Http.HttpRequestMessage
+    $request.Method = [System.Net.Http.HttpMethod]::Head
+    $request.RequestUri = $Uri
+    $response = $httpclient.SendAsync($request)
 
     return $response
 }

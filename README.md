@@ -80,7 +80,7 @@ Updates current installation of docker with the requested version
 	After you have installed the required KB (KB3176936 or higher) you will need to restart the machine 
 
 ### Version
-0.1.0.0
+1.0.0.8
 
 ### Version History
 
@@ -113,6 +113,10 @@ Updates current installation of docker with the requested version
 	Fixed a bug where system env vars would be mangled when installing/uninstalling Docker on top of another.
 	Fixed readme instruction formatting for easier copy/paste/execute
 
+#### 1.0.0.8
+	Fixed a bug where installation of Docker fails over a slow network connection.
+	Added more helpful error text towards failed installation attempts on Windows 10 client machines.
+
 ### Dependencies
 * 1. Nuget binaries
 * 2. Update: KB3176936 or later needs to be installed on your machine
@@ -123,4 +127,3 @@ Updates current installation of docker with the requested version
 	* 1.2. Powershell Direct
 	* 1.3. SSH remoting
 	* Note: Please use WinRM based Powershell Remoting.
-

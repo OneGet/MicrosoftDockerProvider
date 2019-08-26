@@ -194,6 +194,19 @@ function Install-Package
                         -ErrorCategory InvalidOperation
             return
         }
+
+        # This block should not be removed. It enforces Docker's support policy towards which
+        # SKU of Windows that Docker Engine - Enterprise is supported on. Windows 10 users should
+        # use Docker Desktop for Windows instead.
+        if ((Get-CimInstance Win32_Operatingsystem | Select-Object -expand Caption) -like "*Windows 10*")
+        {
+            ThrowError -CallerPSCmdlet $PSCmdlet `
+                        -ExceptionName "InvalidOperationException" `
+                        -ExceptionMessage "Docker Engine - Enterprise is not supported on Windows 10 client. See https://aka.ms/docker-for-windows instead." `
+                        -ErrorId "RequiresWindowsServer" `
+                        -ErrorCategory InvalidOperation
+            return
+        }
     }
     else
     {
@@ -584,13 +597,8 @@ function InstallContainer
     }
     else
     {
-        switch(Get-wmiobject -class win32_operatingsystem | select-object -ExpandProperty Caption ){                
-            'Microsoft Windows 10' {
-                $containerExists = Get-WindowsOptionalFeature -Online -FeatureName Containers | 
-                Select-object -Property *,@{name='Installed';expression={$_.State -eq 'Enabled'}}
-            }
-            Default {$containerExists = Get-WindowsFeature -Name Containers}
-        }
+        $containerExists = Get-WindowsFeature -Name Containers
+        
         if($containerExists -and $containerExists.Installed)
         {
             Write-Verbose "Containers feature is already installed. Skipping the install."
@@ -598,16 +606,13 @@ function InstallContainer
         }
         else
         {
-            Write-Verbose "Installing Containers..."
-            switch(Get-wmiobject -class win32_operatingsystem | select-object -ExpandProperty Caption ){                
-                'Microsoft Windows 10' {$null = Enable-WindowsOptionalFeature -FeatureName Containers}
-                Default {$null = Install-WindowsFeature containers}
-            }
+            Write-Verbose "Installing Containers feature..."
+            Install-WindowsFeature containers
             $script:restartRequired = $true            
         }
     }
 
-    Write-Verbose "Installed containers"
+    Write-Verbose "Installed Containers feature"
 }
 
 function UninstallContainer
@@ -618,11 +623,7 @@ function UninstallContainer
     }
     else
     {
-        switch(Get-wmiobject -class win32_operatingsystem | select-object -ExpandProperty Caption ){
-            'Microsoft Windows 10' {$null = Disable-WindowsOptionalFeature -FeatureName Containers}
-            Default {$null = Uninstall-WindowsFeature containers        }
-        }
-        
+        Uninstall-WindowsFeature containers
     }
 }
 
@@ -1741,6 +1742,11 @@ function IsNanoServer
         $script:isNanoServerInitialized = $true
         return $script:isNanoServer
     }
+}
+
+function IsClient
+{
+
 }
 
 function Install-NuGetClientBinary

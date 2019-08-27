@@ -13,7 +13,7 @@ Microsoft.PowerShell.Core\Set-StrictMode -Version Latest
 
 $script:Providername = "DockerMsftProvider"
 $script:DockerSources = $null
-$script:location_modules = Microsoft.PowerShell.Management\Join-Path -Path $env:TEMP -ChildPath $script:ProviderName
+$script:location_modules = Microsoft.PowerShell.Management\Join-Path -Path (Get-Item $env:TEMP).FullName -ChildPath $script:ProviderName
 $script:location_sources= Microsoft.PowerShell.Management\Join-Path -Path $env:LOCALAPPDATA -ChildPath $script:ProviderName
 $script:file_modules = Microsoft.PowerShell.Management\Join-Path -Path $script:location_sources -ChildPath "sources.txt"
 $script:DockerSearchIndex = "DockerSearchIndex.json"

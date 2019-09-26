@@ -7,10 +7,37 @@
 #
 #########################################################################################
 
+#Requires -Version 5.0
+
 Microsoft.PowerShell.Core\Set-StrictMode -Version Latest
 
 #region variables
+$script:dockerProps = Microsoft.PowerShell.Utility\New-Object PSCustomObject -Property @{
+                      pkgName="Docker"
+                      pkgSources=@{};
+                      pkgDefaultSourceName="DockerDefault";
+                      pkgUrl="https://go.microsoft.com/fwlink/?LinkID=825636&clcid=0x409";
+                      pkgServiceName="docker";
+                      pathProgFilesPkgRoot="";
+                      pathPkgServiceBin="";
+                      pathPkgClientBin=""
+                    }
+$script:containerdProps = Microsoft.PowerShell.Utility\New-Object PSCustomObject -Property @{
+                      pkgName="Containerd"
+                      pkgSources=@{};
+                      pkgDefaultSourceName="ContainerdDefault";
+                      pkgUrl="https://onegetcontainerd.blob.core.windows.net/pkgs/containerd.json?sp=rl&st=2020-01-29T20:36:25Z&se=2025-01-30T20:36:00Z&sv=2019-02-02&sr=c&sig=77ibB37Lv4Ynl2OACOetZDdDjBI%2FInM5IZBkNqtNXmQ%3D";
+                      pkgServiceName="containerd";
+                      pathProgFilesPkgRoot="";
+                      pathPkgServiceBin="";
+                      pathPkgClientBin=""
+                    }
+$script:allAvailablePackages = @{
+                 "docker" = $script:dockerProps
+                 "containerd" = $script:containerdProps
+                }
 
+$packageProps = @()
 $script:Providername = "DockerMsftProvider"
 $script:DockerSources = $null
 $script:location_modules = Microsoft.PowerShell.Management\Join-Path -Path $env:TEMP -ChildPath $script:ProviderName
@@ -18,15 +45,19 @@ $script:location_sources= Microsoft.PowerShell.Management\Join-Path -Path $env:L
 $script:file_modules = Microsoft.PowerShell.Management\Join-Path -Path $script:location_sources -ChildPath "sources.txt"
 $script:DockerSearchIndex = "DockerSearchIndex.json"
 $script:Installer_Extension = "zip"
-$script:dockerURL = "https://go.microsoft.com/fwlink/?LinkID=825636&clcid=0x409"
 $separator = "|#|"
 $script:restartRequired = $false
+$script:allPackages = $false
 $script:isNanoServerInitialized = $false
 $script:isNanoServer = $false
 $script:SystemEnvironmentKey = 'HKLM:\System\CurrentControlSet\Control\Session Manager\Environment'
-$script:pathDockerRoot = Microsoft.PowerShell.Management\Join-Path -Path $env:ProgramFiles -ChildPath "Docker"
-$script:pathDockerD = Microsoft.PowerShell.Management\Join-Path -Path $script:pathDockerRoot -ChildPath "dockerd.exe"
-$script:pathDockerClient = Microsoft.PowerShell.Management\Join-Path -Path $script:pathDockerRoot -ChildPath "docker.exe"
+$script:dummyName = "dummyName"
+$script:pathProgFilesDummyNameRoot = Microsoft.PowerShell.Management\Join-Path -Path $env:ProgramFiles -ChildPath $script:dummyName
+$script:pathProgFilesDockerRoot = Microsoft.PowerShell.Management\Join-Path -Path $env:ProgramFiles -ChildPath "docker"
+$script:pathProgFilesContainerdRoot = Microsoft.PowerShell.Management\Join-Path -Path $script:pathProgFilesDockerRoot -ChildPath "containerd"
+$script:pathDockerD = Microsoft.PowerShell.Management\Join-Path -Path $script:pathProgFilesDockerRoot -ChildPath "dockerd.exe"
+$script:pathDockerClient = Microsoft.PowerShell.Management\Join-Path -Path $script:pathProgFilesDockerRoot -ChildPath "docker.exe"
+$script:pathContainerd = Microsoft.PowerShell.Management\Join-Path -Path $script:pathProgFilesContainerdRoot -ChildPath "containerd.exe"
 $script:wildcardOptions = [System.Management.Automation.WildcardOptions]::CultureInvariant -bor `
                           [System.Management.Automation.WildcardOptions]::IgnoreCase
 
@@ -46,6 +77,12 @@ if('Microsoft.PackageManagement.NuGetProvider.SemanticVersion' -as [Type])
     $script:SemVerTypeName = 'Microsoft.PackageManagement.NuGetProvider.SemanticVersion'
 }
 
+$script:allAvailablePackages["docker"].pathProgFilesPkgRoot = $script:pathProgFilesDockerRoot
+$script:allAvailablePackages["docker"].pathPkgServiceBin = $script:pathDockerD
+$script:allAvailablePackages["docker"].pathPkgClientBin = $script:pathDockerClient
+$script:allAvailablePackages["containerd"].pathProgFilesPkgRoot = $script:pathProgFilesContainerdRoot
+$script:allAvailablePackages["containerd"].pathPkgServiceBin = $script:pathContainerd
+$script:allAvailablePackages["containerd"].pathPkgClientBin = $script:pathContainerd
 #endregion variables
 
 #region One-Get Functions
@@ -92,36 +129,54 @@ function Find-Package
 
     if ((-not $names) -or ($names.Count -eq 0))
     {
-        $names = @('')
+        $names = "*"
     }
 
+    $allPackages = @()
     $allResults = @()
     $allSources = Get-SourceList -Sources $sources
 
     foreach($currSource in $allSources)
     {
-        $Location = $currSource.SourceLocation
-        $sourceName = $currSource.Name
-
-        if($location.StartsWith("https://"))
+        foreach ($currPkg in $script:allAvailablePackages.Keys)
         {
-            $tempResults = @()
-            $tempResults += Find-FromUrl -Source $Location `
-                                            -SourceName $sourceName `
-                                            -Name $names `
-                                            -MinimumVersion $MinimumVersion `
-                                            -MaximumVersion $MaximumVersion `
-                                            -RequiredVersion $RequiredVersion `
-                                            -AllVersions:$AllVersions
+            $currPkgName = $script:allAvailablePackages[$currPkg].pkgName
 
-            if($tempResults)
+            # If the name of the current source starts with the current package name.......
+            # (Note that neither of these two is a wildcard....)
+            # then it should be considered........
+            # as long as $names is *like* current package name.....
+            if ($currSource.Name.StartsWith($currPkgName,"CurrentCultureIgnoreCase"))
             {
-                $allResults += $tempResults
+                if ($currPkgName -like $names)
+                {
+                    $Location = $currSource.SourceLocation
+                    $sourceName = $currSource.Name
+    
+                    if($location.StartsWith("https://"))
+                    {
+                        $tempResults = @()
+                        $tempResults += Find-FromUrl -Source $Location `
+                                                        -SourceName $sourceName `
+                                                        -Name $currPkgName `
+                                                        -MinimumVersion $MinimumVersion `
+                                                        -MaximumVersion $MaximumVersion `
+                                                        -RequiredVersion $RequiredVersion `
+                                                        -AllVersions:$AllVersions
+    
+                        if($tempResults)
+                        {
+                            $allResults += $tempResults
+                        }
+                    }
+                    else
+                    {
+                        Write-Error "Currently only https sources are supported. Please register with https source."
+                    }
+                }
+
+                break
             }
-        }
-        else
-        {
-            Write-Error "Currently only https sources are supported. Please register with https source."
         }
     }
 
@@ -158,6 +213,112 @@ function Download-Package
                             -Location $Location
 }
 
+function Install-Helper-For-Docker
+{
+    param
+    (
+        [Parameter(Mandatory=$true)]
+        [bool]
+        $update,
+
+        [Parameter(Mandatory=$true)]
+        [bool]
+        $force
+    )
+
+    if(Test-Path $script:pathDockerD)
+    {
+        if($update -or $force)
+        {
+            # Uninstall if another installation exists
+            UninstallHelperForDocker
+        }
+        elseif(-not $force)
+        {
+            $dockerVersion = & "$script:pathDockerClient" --version
+            $resultArr = $dockerVersion -split ","
+            $version = ($resultArr[0].Trim() -split " ")[2]
+
+            Write-Verbose "Docker $version already exists. Skipping install. Use -force to install anyway."
+            return $false
+        }
+    }
+    else
+    {
+        # Install WindowsFeature containers
+        try
+        {
+            InstallContainer
+        }
+        catch
+        {
+            $ErrorMessage = $_.Exception.Message
+            ThrowError -CallerPSCmdlet $PSCmdlet `
+                        -ExceptionName $_.Exception.GetType().FullName `
+                        -ExceptionMessage $ErrorMessage `
+                        -ErrorId FailedToDownload `
+                        -ErrorCategory InvalidOperation
+
+            return $false
+        }        
+    }
+
+    return $true
+}
+
+function Install-Helper-For-Containerd
+{
+    param
+    (
+        [Parameter(Mandatory=$true)]
+        [bool]
+        $update,
+
+        [Parameter(Mandatory=$true)]
+        [bool]
+        $force
+    )
+
+    if(Test-Path $script:pathContainerd)
+    {
+        if($update -or $force)
+        {
+            # Uninstall if another installation exists
+            UninstallHelperForContainerd
+        }
+        elseif(-not $force)
+        {
+            $containerdVersion = & "$script:pathDockerClient" --version
+            $resultArr = $containerdVersion -split ","
+            $version = ($resultArr[0].Trim() -split " ")[2]
+
+            Write-Verbose "Containerd $version already exists. Skipping install. Use -force to install anyway."
+            return $false
+        }
+    }
+    else
+    {
+        # Install WindowsFeature containers
+        try
+        {
+            InstallContainer
+        }
+        catch
+        {
+            $ErrorMessage = $_.Exception.Message
+            ThrowError -CallerPSCmdlet $PSCmdlet `
+                        -ExceptionName $_.Exception.GetType().FullName `
+                        -ExceptionMessage $ErrorMessage `
+                        -ErrorId FailedToDownload `
+                        -ErrorCategory InvalidOperation
+
+            return $false
+        }        
+    }
+
+    return $true
+}
+
 function Install-Package
 {
     [CmdletBinding()]
@@ -178,6 +339,7 @@ function Install-Package
                     -ErrorCategory InvalidOperation
     }
 
+    # The below checks hold true for both packages
     if(-not (IsNanoServer))
     {
         $osVersion = (Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\').CurrentBuildNumber
@@ -213,7 +375,7 @@ function Install-Package
 
         if($options.ContainsKey('Update'))
         {
-            Write-Verbose "Updating the docker installation."
+            Write-Verbose "Updating the installation."
             $update = $true
         }
 
@@ -221,43 +383,6 @@ function Install-Package
         {
             $force = $true
         }
-    }
-
-    if(Test-Path $script:pathDockerD)
-    {
-        if($update -or $force)
-        {
-            # Uninstall if another installation exists
-            UninstallHelper
-        }
-        elseif(-not $force)
-        {
-            $dockerVersion = & "$script:pathDockerClient" --version
-            $resultArr = $dockerVersion -split ","
-            $version = ($resultArr[0].Trim() -split " ")[2]
-
-            Write-Verbose "Docker $version already exists. Skipping install. Use -force to install anyway."
-            return
-        }
-    }    
-    else
-    {
-        # Install WindowsFeature containers
-        try
-        {
-            InstallContainer
-        }
-        catch
-        {
-            $ErrorMessage = $_.Exception.Message
-            ThrowError -CallerPSCmdlet $PSCmdlet `
-                        -ExceptionName $_.Exception.GetType().FullName `
-                        -ExceptionMessage $ErrorMessage `
-                        -ErrorId FailedToDownload `
-                        -ErrorCategory InvalidOperation
-
-            return
-        }        
     }
 
     $splitterArray = @("$separator")
@@ -293,29 +418,64 @@ function Install-Package
         Write-verbose "Found $destination to install."
     }
 
+    if ($name -like "docker")
+    {
+        $cont = Install-Helper-For-Docker -update $update -force $force 
+        $name = "docker"
+    }
+    elseif ($name -like "containerd")
+    {
+        $cont = Install-Helper-For-Containerd -update $update -force $force 
+        $name = "containerd"
+    }
+    else
+    {
+        return
+    }
+
     # Install
     try 
     {
         Write-Verbose "Trying to unzip : $destination"
-        $null = Expand-Archive -Path $destination -DestinationPath $env:ProgramFiles -Force
+        $null = Expand-Archive -Path $destination -DestinationPath $env:temp -Force
 
-        # Rename the docker folder to become Docker
-        $dummyName = 'dummyName'
-        $null = Rename-Item -Path $script:pathDockerRoot -NewName $env:ProgramFiles\$dummyName
-        $null = Rename-Item -Path $env:ProgramFiles\$dummyName -NewName $script:pathDockerRoot     
-
-        if(Test-Path $script:pathDockerD)
+        # Now copy the files into the destinatipon folder.
+        if($name -like "docker")
         {
-            Write-Verbose "Trying to enable the docker service..."
-            $service = get-service -Name Docker -WarningAction SilentlyContinue -ErrorAction SilentlyContinue
+            $script:pathTempDockerRoot = Microsoft.PowerShell.Management\Join-Path -Path $env:temp -ChildPath "docker"
+
+            if (-not (Test-Path $script:pathProgFilesDockerRoot)) {$null = mkdir $script:pathProgFilesDockerRoot}
+            $null = Get-ChildItem -Path $script:pathTempDockerRoot| Where-Object { $_.Name -ne 'containerd'}|Copy-Item -Destination $script:pathProgFilesDockerRoot -force -Recurse
+        
+            $null = Rename-Item -Path $script:pathProgFilesDockerRoot -NewName $script:dummyName
+            $null = Rename-Item -Path $env:ProgramFiles\$script:dummyName -NewName "docker"
+
+            $serviceBinPath = $script:pathDockerD
+        }
+        elseif($name -like "containerd")
+        {
+            $script:pathTempContainerdRoot = Microsoft.PowerShell.Management\Join-Path -Path $env:temp -ChildPath "Containerd"
+            if (-not (Test-Path $script:pathProgFilesContainerdRoot)) {$null = mkdir $script:pathProgFilesContainerdRoot}
+            $null = Get-ChildItem -Path $script:pathTempContainerdRoot| Copy-Item -Destination $script:pathProgFilesContainerdRoot -force -Recurse
+        
+            $null = Rename-Item -Path $script:pathProgFilesContainerdRoot -NewName $script:dummyName
+            $null = Rename-Item -Path $script:pathProgFilesDockerRoot\$script:dummyName -NewName "containerd"
+
+            $serviceBinPath = $script:pathContainerd
+        }
+
+        if(Test-Path $serviceBinPath)
+        {
+            Write-Verbose "Trying to enable the service..."
+            $service = get-service -Name $name -WarningAction SilentlyContinue -ErrorAction SilentlyContinue
             if(-not $service)
             {
-                & "$script:pathDockerD" --register-service
+                & "$serviceBinPath" --register-service
             }
         }
         else
         {
-            Write-Error "Unable to expand docker to Program Files."
+            Write-Error "Unable to expand to Program Files."
         }
     }
     catch
@@ -335,10 +495,10 @@ function Install-Package
     }
 
     # Save the install information
-    $null = SaveInfo -Source $source
+    $null = SaveInfo -Source $source -PkgName $name
 
     # Update the path variable
-    $null = Update-PathVar
+    $null = Update-PathVar -pkgName $name
 
     if($script:restartRequired)
     {
@@ -359,19 +519,34 @@ function Uninstall-Package
         $fastPackageReference
     )
 
-    UninstallHelper
-
-    Write-Verbose "Uninstalling container feature from windows"
-    UninstallContainer
-
     [string[]] $splitterArray = @("$separator")
     [string[]] $resultArray = $fastPackageReference.Split($splitterArray, [System.StringSplitOptions]::None)
 
     if((-not $resultArray) -or ($resultArray.count -ne 3)){Write-Debug "Fast package reference doesn't have required parts."}
 
-    $name = $resultArray[0]
-    $version = $resultArray[1]
-    $source = $resultArray[2]
+    # Find-Package and Get-Package deliver the components in a different sequence and we need to support both so....
+    $source = $resultArray[0]
+    $name = $resultArray[1]
+    $version = $resultArray[2]
+
+    if (-not ($name -like "docker" -or $name -like "containerd"))
+    {
+        $name = $resultArray[0]
+        $version = $resultArray[1]
+        $source = $resultArray[2]
+    }
+
+    if ($name -like "docker")
+    {
+        UninstallHelperForDocker
+
+        Write-Verbose "Uninstalling container feature from windows"
+        #UninstallContainer
+    }
+    elseif ($name -like "containerd")
+    {
+        UninstallHelperForContainerd
+    }
 
     $dockerSWID = @{
             Name = $name
@@ -408,58 +583,82 @@ function Get-InstalledPackage
         [string]$maximumVersion
     )
 
-    $name = 'docker'
-    $version = ''
-    $source = ''
-
-    if(Test-Path $script:pathDockerRoot\$script:MetadataFileName) 
+    if(-not $name)
     {
-        $metaContent = (Get-Content -Path $script:pathDockerRoot\$script:MetadataFileName)
+        $name = "*"
+    }
 
-        if(IsNanoServer)
-        {
-            $jsonDll = [Microsoft.PowerShell.CoreCLR.AssemblyExtensions]::LoadFrom($PSScriptRoot + "\Json.coreclr.dll")
-            $jsonParser = $jsonDll.GetTypes() | Where-Object name -match jsonparser
-            $metaContentParsed = $jsonParser::FromJson($metaContent)
+    $ret = @();
 
-            $source = if($metaContentParsed.ContainsKey('SourceName')) {$metaContentParsed.SourceName} else {'Unable To Retrieve Source from metadata.json'}
-            $version = if($metaContentParsed.ContainsKey('Version')) {$metaContentParsed.Version} else {'Unable To Retrieve Version from metadata.json'}
-        }
-        else
+    foreach ($currPkg in $script:allAvailablePackages.Keys)
+    {
+        $currPkgName = $script:allAvailablePackages[$currPkg].pkgName
+
+        $version = ''
+        $source = ''
+        
+        # If the name of the current source starts with the current package name.......
+        # (Note that neither of these two is a wildcard....)
+        # then it should be considered........
+        # as long as $names is *like* current package name.....
+        if ($currPkgName -like $name)
         {
-            $metaContentParsed = (Get-Content -Path $script:pathDockerRoot\$script:MetadataFileName) | ConvertFrom-Json
-            if($metaContentParsed)
+            $currPkgRoot = $script:allAvailablePackages[$currPkgName].pathProgFilesPkgRoot
+
+            if(Test-Path $currPkgRoot\$script:MetadataFileName) 
             {
-                $source = if($metaContentParsed.PSObject.properties.name -contains 'SourceName') {$metaContentParsed.SourceName} else {'Unable To Retrieve Source from metadata.json'}
-                $version = if($metaContentParsed.PSObject.properties.name -contains 'Version') {$metaContentParsed.Version} else {'Unable To Retrieve Version from metadata.json'}
-            }            
-        }
-    }
-    elseif(Test-Path $script:pathDockerD)
-    {
-        $dockerVersion = & "$script:pathDockerClient" --version
-        $resultArr = $dockerVersion -split ","
-        $version = ($resultArr[0].Trim() -split " ")[2]
-        $source = ' '
-    }
-    else
-    {
-        return $null
-    }
+                $metaContent = (Get-Content -Path $currPkgRoot\$script:MetadataFileName)
 
-    $fastPackageReference = $name +
+                if(IsNanoServer)
+                {
+                    $jsonDll = [Microsoft.PowerShell.CoreCLR.AssemblyExtensions]::LoadFrom($PSScriptRoot + "\Json.coreclr.dll")
+                    $jsonParser = $jsonDll.GetTypes() | Where-Object name -match jsonparser
+                    $metaContentParsed = $jsonParser::FromJson($metaContent)
+
+                    $source = if($metaContentParsed.ContainsKey('SourceName')) {$metaContentParsed.SourceName} else {'Unable To Retrieve Source from metadata.json'}
+                    $version = if($metaContentParsed.ContainsKey('Version')) {$metaContentParsed.Version} else {'Unable To Retrieve Version from metadata.json'}
+                }
+                else
+                {
+                    $metaContentParsed = (Get-Content -Path $currPkgRoot\$script:MetadataFileName) | ConvertFrom-Json
+                    if($metaContentParsed)
+                    {
+                        $source = if($metaContentParsed.PSObject.properties.name -contains 'SourceName') {$metaContentParsed.SourceName} else {'Unable To Retrieve Source from metadata.json'}
+                        $version = if($metaContentParsed.PSObject.properties.name -contains 'Version') {$metaContentParsed.Version} else {'Unable To Retrieve Version from metadata.json'}
+                    }            
+                }
+            }
+            elseif(Test-Path $script:allAvailablePackages[$currPkgName].pathPkgServiceBin)
+            {
+                $pkgClientBin = $script:allAvailablePackages[$currPkgName].pathPkgClientBin
+                $obtainedVersion = & $pkgClientBin --version
+                $resultArr = $obtainedVersion -split ","
+                $version = ($resultArr[0].Trim() -split " ")[2]
+                $source = ' '
+            }
+
+            if ($version -ne '')
+            {
+                $fastPackageReference = $currPkgName +
                                     $separator + $version +
                                     $separator + $source
 
-    $dockerSWID = @{
-        Name = $name
-        version = $version
-        Source = $source
-        versionScheme = "MultiPartNumeric"
-        fastPackageReference = $fastPackageReference
+                $resultSWID = @{
+                                Name = $currPkgName
+                                version = $version
+                                Source = $source
+                                #versionScheme = "MultiPartNumeric"
+                                versionScheme = "Alphanumeric"
+                                fastPackageReference = $fastPackageReference
+                                }
+
+                $tmp = New-SoftwareIdentity @resultSWID 
+                $ret += $tmp
+            }
+        }
     }
 
-    return New-SoftwareIdentity @dockerSWID
+    return $ret
 }
 
 #endregion One-Get Required Functions
@@ -473,21 +672,27 @@ function SaveInfo
         [Parameter(Mandatory=$true)]
         [ValidateNotNullOrEmpty()]
         [String]
-        $Source
+        $Source,
+
+        [Parameter(Mandatory=$true)]
+        [ValidateNotNullOrEmpty()]
+        [String]
+        $PkgName
     )
 
     # Create a file
-    $metaFileInfo = New-Item -ItemType File -Path $script:pathDockerRoot -Name $script:MetadataFileName -Force
+    $metaFileInfo = New-Item -ItemType File -Path $script:allAvailablePackages[$PkgName].pathProgFilesPkgRoot -Name $script:MetadataFileName -Force
 
     if(-not $metaFileInfo)
     {
         # TODO: Handle File not created scenario
     }
 
-    if(Test-Path $script:pathDockerD)
+    $pathPkgServiceBin = $script:allAvailablePackages[$PkgName].pathPkgServiceBin
+    if(Test-Path $pathPkgServiceBin)
     {
-        $dockerVersion = & "$script:pathDockerD" --version
-        $resultArr = $dockerVersion -split ","
+        $serviceVer = & "$pathPkgServiceBin" --version
+        $resultArr = $serviceVer -split ","
         $version = ($resultArr[0].Trim() -split " ")[2]
 
         $metaInfo = Microsoft.PowerShell.Utility\New-Object PSCustomObject -Property ([ordered]@{
@@ -499,48 +704,99 @@ function SaveInfo
     }
 }
 
-function UninstallHelper
+function Uninstall-CommonTasks
 {
+    param
+    (
+        [Parameter(Mandatory=$true)]
+        [String]
+        $serviceName,
+
+        [Parameter(Mandatory=$true)]
+        [String]
+        $serviceBinPath
+    )
+
     if(-not (Test-AdminPrivilege))
     {
         ThrowError -CallerPSCmdlet $PSCmdlet `
                     -ExceptionName "InvalidOperationException" `
-                    -ExceptionMessage "Administrator rights are required to install docker." `
+                    -ExceptionMessage "Administrator rights are required to install $serviceName." `
                     -ErrorId "AdminPrivilegesAreRequiredForInstall" `
                     -ErrorCategory InvalidOperation
     }
 
-    # Stop docker service
-    $dockerService = get-service -Name Docker -WarningAction SilentlyContinue -ErrorAction SilentlyContinue
-    if(-not $dockerService)
+    # Stop service
+    $Service = get-service -Name $serviceName -WarningAction SilentlyContinue -ErrorAction SilentlyContinue
+    if(-not $Service)
     {
-        # Docker service is not available
-        Write-Warning "Docker Service is not available."
+        # Service is not available
+        Write-Warning "$serviceName Service is not available."
+        return
     }
 
-    if(($dockerService.Status -eq "Started") -or ($dockerService.Status -eq "Running"))
+    if(($Service.Status -eq "Started") -or ($Service.Status -eq "Running"))
     {
-        Write-Verbose "Trying to stop docker service"
-        $null = stop-service docker
+        Write-Verbose "Trying to stop $serviceName service"
+        $null = stop-service $serviceName
     }
+
+    if(Test-Path $serviceBinPath)
+    {
+        Write-Verbose "Unregistering the service"
+        $null = & "$serviceBinPath" --unregister-service
+    }
+    else
+    {
+        Write-Warning "$serviceBinPath is not present under the Program Files. Please check the installation."
+    }
+}
+        
+function UninstallHelperForDocker
+{
+    Uninstall-CommonTasks -serviceName "docker" -serviceBinPath $script:pathDockerD
 
     if(Test-Path $script:pathDockerD)
     {
-        Write-Verbose "Unregistering the docker service"
-        $null = & "$script:pathDockerD" --unregister-service
-        
         Write-Verbose "Removing the docker files"
-        $null = Get-ChildItem -Path $script:pathDockerRoot -Recurse | Remove-Item -force -Recurse
+        
+        # Avoid rewriting or removing the containerd files
+        $null = Get-ChildItem -ad -Path $script:pathProgFilesDockerRoot| Where-Object { $_.Name -ne 'containerd'}|Remove-Item -force -Recurse
+        $null = Get-ChildItem -af -Path $script:pathProgFilesDockerRoot| Remove-Item -force -Recurse
 
-        if(Test-Path $script:pathDockerRoot ) {$null = Remove-Item $script:pathDockerRoot  -Force}
+        if((Test-Path $script:pathProgFilesDockerRoot) -and (-not (Test-Path $script:pathProgFilesContainerdRoot))) {$null = Remove-Item $script:pathProgFilesDockerRoot -Force}
     }
-    else 
+    else
     {
         Write-Warning "Docker is not present under the Program Files. Please check the installation."
     }
 
     Write-Verbose "Removing the path variable"
-    $null = Remove-PathVar
+    $null = Remove-PathVar -pkgName "docker"
+}
+
+function UninstallHelperForContainerd
+{
+    Uninstall-CommonTasks -serviceName "containerd" -serviceBinPath $script:pathContainerd
+
+    if(Test-Path $script:pathContainerd)
+    {
+        Write-Verbose "Removing the containerd files"
+        
+        $null = Get-ChildItem -Path $script:pathProgFilesContainerdRoot| Remove-Item -force -Recurse
+
+        $null = Remove-Item $script:pathProgFilesContainerdRoot -Force
+
+        $directoryInfo = Get-ChildItem $script:pathProgFilesDockerRoot | Measure-Object
+        if($directoryInfo.count -eq 0) {$null = Remove-Item $script:pathProgFilesDockerRoot -Force}
+    }
+    else 
+    {
+        Write-Warning "Containerd is not present under the Program Files. Please check the installation."
+    }
+
+    Write-Verbose "Removing the path variable"
+    $null = Remove-PathVar -pkgName "containerd"
 }
 
 function InstallContainer
@@ -660,8 +916,24 @@ function HandleProvider
 
 function Update-PathVar
 {
+    param
+    (
+        [Parameter(Mandatory=$true)]
+        [String]
+        $pkgName
+    )
+
+    if ($pkgName -like "docker")
+    {
+        $pathProgFilesRootToAdd = $script:pathProgFilesDockerRoot 
+    }
+    elseif ($pkgName -like "containerd")
+    {
+        $pathProgFilesRootToAdd = $script:pathProgFilesContainerdRoot 
+    }
+
     $NameOfPath = "Path"
-    
+
     # Set the environment variable in the Local Process
     $envVars = [Environment]::GetEnvironmentVariable($NameOfPath)
     $envArr = @()
@@ -669,15 +941,18 @@ function Update-PathVar
     $envFlag = $true
     foreach($envItem in $envArr) 
     {
-        if($envItem.Trim() -match [regex]::Escape($script:pathDockerRoot)) 
+        if($envItem.Trim() -match [regex]::Escape($pathProgFilesRootToAdd)) 
         {
-            $envFlag = $false
-            break
+            if ($envItem.Trim().length -eq $pathProgFilesRootToAdd.length)
+            {
+                $envFlag = $false
+                break
+            }
         }
     }
     if($envFlag)
     {
-        $null = [Environment]::SetEnvironmentVariable($NameOfPath, $envVars + ";" + $script:pathDockerRoot)
+        $null = [Environment]::SetEnvironmentVariable($NameOfPath, $envVars + ";" + $pathProgFilesRootToAdd)
     }
 
     # Set the environment variable in the Machine
@@ -687,15 +962,18 @@ function Update-PathVar
     $currFlag = $true
     foreach($currItem in $currArr)
     {
-        if($currItem.Trim() -match [regex]::Escape($script:pathDockerRoot)) 
+        if($currItem.Trim() -match [regex]::Escape($pathProgFilesRootToAdd)) 
         {
-            $currFlag = $false
-            break
+            if ($currItem.Trim().length -eq $pathProgFilesRootToAdd.length)
+            {
+                $currFlag = $false
+                break
+            }
         }
     }
     if($currFlag)
     {
-        $null = Microsoft.PowerShell.Management\Set-ItemProperty $script:SystemEnvironmentKey -Name $NameOfPath -Value ($currPath + ";" + $script:pathDockerRoot)
+        $null = Microsoft.PowerShell.Management\Set-ItemProperty $script:SystemEnvironmentKey -Name $NameOfPath -Value ($currPath + ";" + $pathProgFilesRootToAdd)
 
         # Nanoserver needs a reboot to persist the registry change
         if(IsNanoServer)
@@ -707,6 +985,22 @@ function Update-PathVar
 
 function Remove-PathVar
 {
+    param
+    (
+        [Parameter(Mandatory=$true)]
+        [String]
+        $pkgName
+    )
+
+    if ($pkgName -like "docker")
+    {
+        $pathProgFilesRootToRemove = $script:pathProgFilesDockerRoot 
+    }
+    elseif ($pkgName -like "containerd")
+    {
+        $pathProgFilesRootToRemove = $script:pathProgFilesContainerdRoot 
+    }
+
     $NameOfPath = "Path"
 
     # Set the environment variable in the Local Process
@@ -714,18 +1008,27 @@ function Remove-PathVar
     $envArr = @()
     $envArr = $envVars -split ';'
     $envFlag = $false
+    $newPath = ""
     foreach($envItem in $envArr) 
     {
-        if($envItem.Trim() -match [regex]::Escape($script:pathDockerRoot))
+        if(($envItem.Trim() -match [regex]::Escape($pathProgFilesRootToRemove)) -and ($envItem.Trim().length -eq $pathProgFilesRootToRemove.length))
         {
             $envFlag = $true
-            break
+        }
+        else
+        {
+            if ($newPath -eq "")
+            {
+                $newPath = $envItem
+            }
+            else
+            {
+                $newPath = $newPath + ";" + $envItem
+            }
         }
     }
     if($envFlag)
     {
-        $newPath = $envVars -replace [regex]::Escape($script:pathDockerRoot),$null
-        $newPath = $newPath -replace (";;"), ";"
         $null = [Environment]::SetEnvironmentVariable($NameOfPath, $newPath)
     }
 
@@ -733,44 +1036,32 @@ function Remove-PathVar
     $currPath = (Microsoft.PowerShell.Management\Get-ItemProperty -Path $script:SystemEnvironmentKey -Name $NameOfPath -ErrorAction SilentlyContinue).Path
     $currArr = @()
     $currArr = $currPath -split ';'
+    $newPath = ""
     $currFlag = $false
     foreach($currItem in $currArr)
     {
-        if($currItem.Trim() -match [regex]::Escape($script:pathDockerRoot))
+        if(($currItem.Trim() -match [regex]::Escape($pathProgFilesRootToRemove)) -and ($currItem.Trim().length -eq $pathProgFilesRootToRemove.length))
         {
             $currFlag = $true
-            break
+        }
+        else
+        {
+            if ($newPath -eq "")
+            {
+                $newPath = $currItem
+            }
+            else
+            {
+                $newPath = $newPath + ";" + $currItem
+            }
         }
     }
     if($currFlag)
     {
-        $newPath = $currPath -replace [regex]::Escape($script:pathDockerRoot),$null
-        $newPath = $newPath -replace (";;"), ";"
         $null = Microsoft.PowerShell.Management\Set-ItemProperty $script:SystemEnvironmentKey -Name $NameOfPath -Value $newPath
     }
 }
 
-function Set-ModuleSourcesVariable
-{
-    if(Microsoft.PowerShell.Management\Test-Path $script:file_modules)
-    {
-        $script:DockerSources = DeSerialize-PSObject -Path $script:file_modules
-    }
-    else
-    {
-        $script:DockerSources = [ordered]@{}
-        $defaultModuleSource = Microsoft.PowerShell.Utility\New-Object PSCustomObject -Property ([ordered]@{
-            Name = "DockerDefault"
-            SourceLocation = $script:dockerURL
-            Trusted=$false
-            Registered= $true
-            InstallationPolicy = "Untrusted"
-        })
-
-        $script:DockerSources.Add("DockerDefault", $defaultModuleSource)
-        Save-ModuleSources
-    }
-}
 
 function DeSerialize-PSObject
 {
@@ -786,16 +1077,26 @@ function DeSerialize-PSObject
 
 function Save-ModuleSources
 {
-    # check if exists
+    param
+    (
+        [Parameter(Mandatory=$true)]
+        [psobject]
+        $sourceToSave,
+
+        [Parameter(Mandatory=$true)]
+        [String]
+        $filePathToSaveTo
+    )
+
     if(-not (Test-Path $script:location_sources))
     {
         $null = mkdir $script:location_sources
     }
 
-    # seralize module
-    Microsoft.PowerShell.Utility\Out-File -FilePath $script:file_modules `
-                                            -Force `
-                                            -InputObject ([System.Management.Automation.PSSerializer]::Serialize($script:DockerSources))
+    Microsoft.PowerShell.Utility\Out-File -FilePath $filePathToSaveTo `
+                                          -Force `
+                                          -InputObject ([System.Management.Automation.PSSerializer]::Serialize($sourceToSave))
+
 }
 
 function Get-SourceList
@@ -808,23 +1109,28 @@ function Get-SourceList
 
     Set-ModuleSourcesVariable
 
-    $listOfSources = @()    
+    $listOfSources = @()
     
-    foreach($mySource in $script:DockerSources.Values)
+    foreach ($curPkg in $script:allAvailablePackages.Keys)
     {
-        if((-not $sources) -or
-            (($mySource.Name -eq $sources) -or
-               ($mySource.SourceLocation -eq $sources)))
-        {
-            $tempHolder = @{}
+        $curPkgSources = $script:allAvailablePackages[$curPkg].pkgSources
 
-            $location = $mySource."SourceLocation"
-            $tempHolder.Add("SourceLocation", $location)
-            
-            $packageSourceName = $mySource.Name
-            $tempHolder.Add("Name", $packageSourceName)
-            
-            $listOfSources += $tempHolder
+        foreach($mySource in $curPkgSources.Values)
+        {
+            if((-not $sources) -or
+                (($mySource.Name -eq $sources) -or
+                   ($mySource.SourceLocation -eq $sources)))
+            {
+                $tempHolder = @{}
+    
+                $location = $mySource."SourceLocation"
+                $tempHolder.Add("SourceLocation", $location)
+                
+                $packageSourceName = $mySource.Name
+                $tempHolder.Add("Name", $packageSourceName)
+                
+                $listOfSources += $tempHolder
+            }
         }
     }
 
@@ -867,7 +1173,7 @@ function Find-FromUrl
         $SourceName,
 
         [Parameter(Mandatory=$false)]
-        [string[]]
+        [String]
         $Name,
 
         [Parameter(Mandatory=$false)]
@@ -887,16 +1193,14 @@ function Find-FromUrl
         $AllVersions
     )
 
-    if ([string]::IsNullOrWhiteSpace($Name))
-    {
-        $Name = "*"
-    }
+    if(('docker' -ne $Name) -and ('containerd' -ne $Name)) {return $Null}
 
-    if ([System.Management.Automation.WildcardPattern]::ContainsWildcardCharacters($Name))
+    # Match only appropriate sources for the package.....
+    if (-Not (('docker' -like $Name -and $SourceName.StartsWith('docker',"CurrentCultureIgnoreCase")) -or
+        ('containerd' -like $Name -and $SourceName.StartsWith('containerd',"CurrentCultureIgnoreCase"))))
     {
-        if('docker' -notlike $Name) {return $null}
+        return $null
     }
-    elseif('docker' -ne $Name) {return $Null}
 
     $searchFile = Get-SearchIndex -fwdLink $Location `
                                     -SourceName $SourceName
@@ -906,20 +1210,14 @@ function Find-FromUrl
     if(-not $searchFileContent)
     {
         return $null
-    }   
+    }
 
-    $updatedContent = $searchFileContent.Trim(" .-`t`n`r")    
+    $updatedContent = $searchFileContent.Trim(" .-`t`n`r")
     $contents = $updatedContent | ConvertFrom-Json
     $channels = $contents.channels
     $versions = $contents.versions
     $channelValues = $channels | Get-Member -MemberType NoteProperty
     $searchResults = @()
-
-    # If name is null or whitespace, interpret as *
-    if ([string]::IsNullOrWhiteSpace($Name))
-    {
-        $Name = "*"
-    }
 
     # Set the default channel, allowing $RequiredVersion to override when set to a channel name.
     $defaultChannel = 'cs'
@@ -948,7 +1246,7 @@ function Find-FromUrl
     {
         if($versions.PSObject.properties.name -contains $RequiredVersion)
         {
-            $obj = Get-ResultObject -JSON $versions -Version $RequiredVersion
+            $obj = Get-ResultObject -JSON $versions -Version $RequiredVersion -PkgName $Name
             $searchResults += $obj
             return $searchResults
         }
@@ -959,7 +1257,18 @@ function Find-FromUrl
 
     $savedVersion = New-Object $script:SemVerTypeName -ArgumentList '0.0.0'
     
-    # version requirement
+    if($MinimumVersion)
+    {
+        $convertedMinimumVersion =  New-Object $script:SemVerTypeName -ArgumentList $MinimumVersion
+    }
+
+    if($MaximumVersion)
+    {
+        $convertedMaximumVersion =  New-Object $script:SemVerTypeName -ArgumentList $MaximumVersion
+    }
+
+
+    # version requirements
     # compare different versions
     foreach($channel in $channelValues)
     {
@@ -969,88 +1278,33 @@ function Find-FromUrl
         }
         else 
         {
-            $dockerName = "Docker"
             $versionName = Resolve-ChannelAlias -Channels $channels -Channel $channel.Name
             $versionValue = $channels.$versionName.version
-
-            $toggle = $false
-
-            # Check if the search string has * in it
-            if ([System.Management.Automation.WildcardPattern]::ContainsWildcardCharacters($Name))
-            {
-                if($dockerName -like $Name)
-                {
-                    $toggle = $true
-                }
-                else
-                {
-                    continue
-                }
-            }
-            else
-            {
-                if($dockerName -eq $Name)
-                {
-                    $toggle = $true
-                }
-                else
-                {
-                    continue
-                }
-            }
-
             $thisVersion = New-Object $script:SemVerTypeName -ArgumentList $versionValue
 
-            if($MinimumVersion)
+            if(($MinimumVersion -and ($thisVersion -lt $convertedMinimumVersion)) -or 
+               ($MaximumVersion -and ($thisVersion -gt $convertedMaximumVersion)))
             {
-                $convertedMinimumVersion =  New-Object $script:SemVerTypeName -ArgumentList $MinimumVersion
-                if($thisVersion -ge $convertedMinimumVersion)
-                {
-                    $toggle = $true
-                }
-                else 
-                {
-                    $toggle = $false
-                    continue
-                }
+                continue
             }
 
-            if($MaximumVersion)
-            {
-                $convertedMaximumVersion =  New-Object $script:SemVerTypeName -ArgumentList $MaximumVersion
-                if($thisVersion -le $convertedMaximumVersion)
-                {
-                    $toggle = $true
-                }
-                else
-                {
-                    $toggle = $false
-                    continue
-                }
-            }
-
-            if($toggle)
-            {
-                if($thisVersion -ge $savedVersion) {$savedVersion = $thisVersion}
-            }
+            if($thisVersion -ge $savedVersion) {$savedVersion = $thisVersion}
 
             if($AllVersions)
             {
-                if($toggle)
-                {
-                    $obj = Get-ResultObject -JSON $versions -Version $versionValue
-                    $searchResults += $obj
-                }
+                $obj = Get-ResultObject -JSON $versions -Version $versionValue -PkgName "ss2"
+                $searchResults += $obj
             }
         }
     }
 
+    # so that we do not include twice for $AllVersions....
     if(-not $AllVersions)
     {
         if($savedVersion -eq '0.0.0'){return $null}
 
         $ver = $savedVersion.ToString()
-        $obj = Get-ResultObject -JSON $versions -Version $ver
+        $obj = Get-ResultObject -JSON $versions -Version $ver -PkgName "ss3"
         $searchResults += $obj
     }
 
@@ -1061,6 +1315,10 @@ function Get-ResultObject
 {
     param
     (
+        [Parameter(Mandatory=$true)]
+        [string]
+        $PkgName,
+
         [Parameter(Mandatory=$true)]
         [string]
         $Version,
@@ -1095,7 +1353,7 @@ function Get-ResultObject
 
         $obj = $versions.$Version.PSObject.Copy()
         $null = $obj | Add-Member NoteProperty Version $Version
-        $null = $obj | Add-Member NoteProperty Name "Docker"
+        $null = $obj | Add-Member NoteProperty Name $PkgName
         $null = $obj | Add-Member NoteProperty SourceName $SourceName
         $null = $obj | Add-Member NoteProperty Description $description
 
@@ -1218,24 +1476,34 @@ function Set-ModuleSourcesVariable
     [CmdletBinding()]
     param([switch]$Force)
 
-    if(Microsoft.PowerShell.Management\Test-Path $script:file_modules)
+    #Iterate over all packages.....
+    foreach ($curPkg in $script:allAvailablePackages.Keys)
     {
-        $script:DockerSources = DeSerialize-PSObject -Path $script:file_modules
-    }
-    else
-    {
-        $script:DockerSources = [ordered]@{}
-                
-        $defaultModuleSource = Microsoft.PowerShell.Utility\New-Object PSCustomObject -Property ([ordered]@{
-            Name = "DockerDefault"
-            SourceLocation = $script:dockerURL
-            Trusted=$false
-            Registered= $true
-            InstallationPolicy = "Untrusted"
-        })
+        $curPkgPersistFile = $script:allAvailablePackages[$curPkg].pkgServiceName + "sources.txt"
+        $curPkgPersistFilePath = Microsoft.PowerShell.Management\Join-Path -Path $script:location_sources -ChildPath $curPkgPersistFile 
 
-        $script:DockerSources.Add("DockerDefault", $defaultModuleSource)
-        Save-ModuleSources
+        $curPkgDefaultSourceName = $script:allAvailablePackages[$curPkg].pkgDefaultSourceName
+        if(Microsoft.PowerShell.Management\Test-Path $curPkgPersistFilePath)
+        {
+            $script:allAvailablePackages[$curPkg].pkgSources = DeSerialize-PSObject -Path $curPkgPersistFilePath
+        }
+        else
+        {
+            $script:allAvailablePackages[$curPkg].pkgSources = [ordered]@{}
+                
+            $curPkgDefaultModuleSource = Microsoft.PowerShell.Utility\New-Object PSCustomObject -Property ([ordered]@{
+                Name = $curPkgDefaultSourceName
+                SourceLocation = $script:allAvailablePackages[$curPkg].pkgUrl
+                Trusted=$false
+                Registered= $true
+                InstallationPolicy = "Untrusted"
+            })
+
+            $script:allAvailablePackages[$curPkg].pkgSources.Add($curPkgDefaultSourceName, $curPkgDefaultModuleSource)
+            Save-ModuleSources `
+            -sourceToSave $script:allAvailablePackages[$curPkg].pkgSources `
+            -filePathToSaveTo $curPkgPersistFilePath
+        }
     }
 }
 
@@ -1287,7 +1555,7 @@ function Add-PackageSource
     #TODO: Check if name already exists
     $script:DockerSources.Add($Name, $moduleSource)
 
-    Save-ModuleSources
+    #Save-ModuleSources
 
     Write-Output -InputObject (New-PackageSourceFromModuleSource -ModuleSource $moduleSource)
 }
@@ -1313,7 +1581,7 @@ function Remove-PackageSource
 
     $script:DockerSources.Remove($Name)
 
-    Save-ModuleSources
+    #Save-ModuleSources
 }
 
 function Resolve-PackageSource
@@ -1393,12 +1661,17 @@ function Get-SourceName
 
     Set-ModuleSourcesVariable
 
-    foreach($psModuleSource in $script:DockerSources.Values)
+    foreach ($curPkg in $script:allAvailablePackages.Keys)
     {
-        if(($psModuleSource.Name -eq $Location) -or
-           ($psModuleSource.SourceLocation -eq $Location))
+        $curPkgSources = $script:allAvailablePackages[$curPkg].pkgSources
+
+        foreach($psModuleSource in $curPkgSources.Values)
         {
-            return $psModuleSource.Name
+            if(($psModuleSource.Name -eq $Location) -or
+                   ($psModuleSource.SourceLocation -eq $Location))
+            {
+                return $psModuleSource.Name
+            }
         }
     }
 }
@@ -1636,17 +1909,17 @@ function ThrowError
 function CheckDiskSpace
 {
     param
-	(
-		[parameter(Mandatory = $true)]
+    (
+        [parameter(Mandatory = $true)]
         [ValidateNotNullOrEmpty()]
         [System.String]        
-    	$Destination, 
-		
-		[parameter(Mandatory = $true)]
+        $Destination, 
+                      
+        [parameter(Mandatory = $true)]
         [ValidateNotNullOrEmpty()]
         [System.String]        
-    	$URL
-	)
+        $URL
+    )
 
     $size = 0
 
@@ -1678,17 +1951,17 @@ function CheckDiskSpace
 function VerifyHashCheck
 {
     param
-	(
-		[parameter(Mandatory = $true)]
+    (
+        [parameter(Mandatory = $true)]
         [ValidateNotNullOrEmpty()]
         [System.String]        
-    	$Destination, 
-		
-		[parameter(Mandatory = $true)]
+        $Destination, 
+    
+        [parameter(Mandatory = $true)]
         [ValidateNotNullOrEmpty()]
         [System.String]        
-    	$hash
-	)
+        $hash
+    )
 
     Write-Verbose "Verifying Hash of the downloaded file."
 
@@ -1860,4 +2133,4 @@ function Install-NuGetClientBinary
     }
 }
 
-#endregion
+

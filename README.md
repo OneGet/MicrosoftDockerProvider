@@ -65,7 +65,7 @@ You can download and save Docker installer without installation, using Save-Pack
 Uninstalls Docker from the local machine.
 
 ##### Example 1: Uninstall docker from the local machine.
-	Uninstall-Package -ProviderName DockerMsftProvider -Name dOcKeR -Verbose
+	Uninstall-Package -ProviderName DockerMsftProvider -Name Docker -Verbose
 
 #### Update docker
 Updates current installation of docker with the requested version

@@ -83,6 +83,8 @@ $script:allAvailablePackages["docker"].pathPkgClientBin = $script:pathDockerClie
 $script:allAvailablePackages["containerd"].pathProgFilesPkgRoot = $script:pathProgFilesContainerdRoot
 $script:allAvailablePackages["containerd"].pathPkgServiceBin = $script:pathContainerd
 $script:allAvailablePackages["containerd"].pathPkgClientBin = $script:pathContainerd
+
+$script:lastFindWasDefault = $FALSE
 #endregion variables
 
 #region One-Get Functions
@@ -119,6 +121,12 @@ function Find-Package
     if($options.ContainsKey("AllVersions"))
     {
         $AllVersions = $options['AllVersions']
+    }
+
+    $script:lastFindWasDefault = $FALSE
+    if((-not ($MinimumVersion -or $MaximumVersion -or $RequiredVersion -or $AllVersions)))
+    {
+        $script:lastFindWasDefault = $TRUE
     }
 
     $sources = @()
@@ -339,6 +347,7 @@ function Install-Package
                     -ErrorCategory InvalidOperation
     }
 
+    $downloadOutput = @();
     # The below checks hold true for both packages
     if(-not (IsNanoServer))
     {
@@ -385,120 +394,144 @@ function Install-Package
         }
     }
 
-    $splitterArray = @("$separator")
-    $resultArray = $fastPackageReference.Split($splitterArray, [System.StringSplitOptions]::None)
-
-    if((-not $resultArray) -or ($resultArray.count -ne 8)){Write-Debug "Fast package reference doesn't have required parts."}
-
-    $source = $resultArray[0]
-    $name = $resultArray[1]
-    $version = $resultArray[2]
-    $description = $resultArray[3]
-    $originPath = $resultArray[5]
-    $size = $resultArray[6]
-    $sha = $resultArray[7]
-    $date = $resultArray[4]
-    $Location = $script:location_modules
-
-    $destination = GenerateFullPath -Location $Location `
-                                    -Name $name `
-                                    -Version $Version
-
-    $downloadOutput = DownloadPackageHelper -FastPackageReference $FastPackageReference `
-                            -Request $Request `
-                            -Location $Location
-
-    if(-not (Test-Path $destination))
+    while (1)
     {
-        Write-Error "$destination does not exist"
-        return 
-    }
-    else
-    {
-        Write-verbose "Found $destination to install."
-    }
+        $installDep = $FALSE
 
-    if ($name -like "docker")
-    {
-        $cont = Install-Helper-For-Docker -update $update -force $force 
-        $name = "docker"
-    }
-    elseif ($name -like "containerd")
-    {
-        $cont = Install-Helper-For-Containerd -update $update -force $force 
-        $name = "containerd"
-    }
-    else
-    {
-        return
-    }
-
-    # Install
-    try 
-    {
-        Write-Verbose "Trying to unzip : $destination"
-        $null = Expand-Archive -Path $destination -DestinationPath $env:temp -Force
-
-        # Now copy the files into the destinatipon folder.
-        if($name -like "docker")
+        $splitterArray = @("$separator")
+        $resultArray = $fastPackageReference.Split($splitterArray, [System.StringSplitOptions]::None)
+    
+        if((-not $resultArray) -or ($resultArray.count -ne 8)){Write-Debug "Fast package reference doesn't have required parts."}
+    
+        $source = $resultArray[0]
+        $name = $resultArray[1]
+        $version = $resultArray[2]
+        $description = $resultArray[3]
+        $originPath = $resultArray[5]
+        $size = $resultArray[6]
+        $sha = $resultArray[7]
+        $date = $resultArray[4]
+        $Location = $script:location_modules
+    
+        $destination = GenerateFullPath -Location $Location `
+                                        -Name $name `
+                                        -Version $Version
+    
+        $downloadOutput += DownloadPackageHelper -FastPackageReference $FastPackageReference `
+                                -Request $Request `
+                                -Location $Location
+    
+        if(-not (Test-Path $destination))
         {
-            $script:pathTempDockerRoot = Microsoft.PowerShell.Management\Join-Path -Path $env:temp -ChildPath "docker"
-
-            if (-not (Test-Path $script:pathProgFilesDockerRoot)) {$null = mkdir $script:pathProgFilesDockerRoot}
-            $null = Get-ChildItem -Path $script:pathTempDockerRoot| Where-Object { $_.Name -ne 'containerd'}|Copy-Item -Destination $script:pathProgFilesDockerRoot -force -Recurse
-        
-            $null = Rename-Item -Path $script:pathProgFilesDockerRoot -NewName $script:dummyName
-            $null = Rename-Item -Path $env:ProgramFiles\$script:dummyName -NewName "docker"
-
-            $serviceBinPath = $script:pathDockerD
-        }
-        elseif($name -like "containerd")
-        {
-            $script:pathTempContainerdRoot = Microsoft.PowerShell.Management\Join-Path -Path $env:temp -ChildPath "Containerd"
-            if (-not (Test-Path $script:pathProgFilesContainerdRoot)) {$null = mkdir $script:pathProgFilesContainerdRoot}
-            $null = Get-ChildItem -Path $script:pathTempContainerdRoot| Copy-Item -Destination $script:pathProgFilesContainerdRoot -force -Recurse
-        
-            $null = Rename-Item -Path $script:pathProgFilesContainerdRoot -NewName $script:dummyName
-            $null = Rename-Item -Path $script:pathProgFilesDockerRoot\$script:dummyName -NewName "containerd"
-
-            $serviceBinPath = $script:pathContainerd
-        }
-
-        if(Test-Path $serviceBinPath)
-        {
-            Write-Verbose "Trying to enable the service..."
-            $service = get-service -Name $name -WarningAction SilentlyContinue -ErrorAction SilentlyContinue
-            if(-not $service)
-            {
-                & "$serviceBinPath" --register-service
-            }
+            Write-Error "$destination does not exist"
+            return 
         }
         else
         {
-            Write-Error "Unable to expand to Program Files."
+            Write-verbose "Found $destination to install."
+        }
+    
+        if ($name -like "docker")
+        {
+            $cont = Install-Helper-For-Docker -update $update -force $force 
+            $name = "docker"
+
+            if ($script:lastFindWasDefault)
+            {
+                # If we were asked to install the latest Docker package,we will
+                # also install the latest  containerd package. But if  the user 
+                # asked for  an explicit version of a package [even if Docker], 
+                # we shall install exactly that one and no more.
+                $installDep = $TRUE;
+            }
+        }
+        elseif ($name -like "containerd")
+        {
+            $cont = Install-Helper-For-Containerd -update $update -force $force 
+            $name = "containerd"
+        }
+        else
+        {
+            return
+        }
+    
+        # Install
+        try 
+        {
+            Write-Verbose "Trying to unzip : $destination"
+            $null = Expand-Archive -Path $destination -DestinationPath $env:temp -Force
+    
+            # Now copy the files into the destination folder.
+            if($name -like "docker")
+            {
+                $script:pathTempDockerRoot = Microsoft.PowerShell.Management\Join-Path -Path $env:temp -ChildPath "docker"
+    
+                if (-not (Test-Path $script:pathProgFilesDockerRoot)) {$null = mkdir $script:pathProgFilesDockerRoot}
+                $null = Get-ChildItem -Path $script:pathTempDockerRoot| Where-Object { $_.Name -ne 'containerd'}|Copy-Item -Destination $script:pathProgFilesDockerRoot -force -Recurse
+            
+                $null = Rename-Item -Path $script:pathProgFilesDockerRoot -NewName $script:dummyName
+                $null = Rename-Item -Path $env:ProgramFiles\$script:dummyName -NewName "docker"
+    
+                $serviceBinPath = $script:pathDockerD
+            }
+            elseif($name -like "containerd")
+            {
+                $script:pathTempContainerdRoot = Microsoft.PowerShell.Management\Join-Path -Path $env:temp -ChildPath "Containerd"
+                if (-not (Test-Path $script:pathProgFilesContainerdRoot)) {$null = mkdir $script:pathProgFilesContainerdRoot}
+                $null = Get-ChildItem -Path $script:pathTempContainerdRoot| Copy-Item -Destination $script:pathProgFilesContainerdRoot -force -Recurse
+            
+                $null = Rename-Item -Path $script:pathProgFilesContainerdRoot -NewName $script:dummyName
+                $null = Rename-Item -Path $script:pathProgFilesDockerRoot\$script:dummyName -NewName "containerd"
+    
+                $serviceBinPath = $script:pathContainerd
+            }
+    
+            if(Test-Path $serviceBinPath)
+            {
+                Write-Verbose "Trying to enable the service..."
+                $service = get-service -Name $name -WarningAction SilentlyContinue -ErrorAction SilentlyContinue
+                if(-not $service)
+                {
+                    & "$serviceBinPath" --register-service
+                }
+            }
+            else
+            {
+                Write-Error "Unable to expand to Program Files."
+            }
+        }
+        catch
+        {
+            $ErrorMessage = $_.Exception.Message
+            ThrowError -CallerPSCmdlet $PSCmdlet `
+                        -ExceptionName $_.Exception.GetType().FullName `
+                        -ExceptionMessage $ErrorMessage `
+                        -ErrorId FailedToDownload `
+                        -ErrorCategory InvalidOperation
+        }
+        finally
+        {
+            # Clean up
+            Write-Verbose "Removing the archive: $destination"
+            $null = remove-item $destination -Force
+        }
+    
+        # Save the install information
+        $null = SaveInfo -Source $source -PkgName $name
+    
+        # Update the path variable
+        $null = Update-PathVar -pkgName $name
+        if ($installDep)
+        {
+            $temppkg = Find-Package "containerd" "" "" ""
+            $fastPackageReference = $temppkg.fastPackageReference
+            Write-Verbose "Installing containerd as a dependency of docker"
+        }
+        else
+        {
+            break;
         }
     }
-    catch
-    {
-        $ErrorMessage = $_.Exception.Message
-        ThrowError -CallerPSCmdlet $PSCmdlet `
-                    -ExceptionName $_.Exception.GetType().FullName `
-                    -ExceptionMessage $ErrorMessage `
-                    -ErrorId FailedToDownload `
-                    -ErrorCategory InvalidOperation
-    }
-    finally
-    {
-        # Clean up
-        Write-Verbose "Removing the archive: $destination"
-        $null = remove-item $destination -Force
-    }
-
-    # Save the install information
-    $null = SaveInfo -Source $source -PkgName $name
-
-    # Update the path variable
-    $null = Update-PathVar -pkgName $name
 
     if($script:restartRequired)
     {

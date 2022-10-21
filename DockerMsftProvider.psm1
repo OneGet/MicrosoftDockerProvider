@@ -357,6 +357,8 @@ function Install-Package
     {
         Write-Warning "A restart is required to enable the containers feature. Please restart your machine."
     }
+    
+    Write-Warning "This provider is being deprecated and should no longer be used. Users should refer to the instructions on aka.ms/containers/install instead." 
 
     Write-Output $downloadOutput
 }

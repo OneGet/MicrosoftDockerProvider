@@ -1,3 +1,17 @@
+## IMPORTANT - THIS PROVIDER IS NOW DEPRECATED
+As of May 23rd 2023 the backing service for this provider has been shutdown. You can find alternative options at <a href="https://learn.microsoft.com/en-us/virtualization/windowscontainers/quick-start/set-up-environment?tabs=dockerce#windows-server-1">Windows Container Documentation - Setup Environment</a>.
+
+For more information on the deprecation  please see the following blog posts:
+[Updates to the Windows Container Runtime support](https://techcommunity.microsoft.com/t5/containers/updates-to-the-windows-container-runtime-support/ba-p/2788799)
+[Reminder - Updates to Windows Container Runtime Support](https://techcommunity.microsoft.com/t5/containers/reminder-updates-to-windows-container-runtime-support/ba-p/3620989)
+
+In the near future this repo will be marked archived. 
+
+#### Preserving the original  readme contents:
+
+---
+
+
 ### Introduction
 #### Install a Docker image from the online Package repository
 

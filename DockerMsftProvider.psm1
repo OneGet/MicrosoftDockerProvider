@@ -1509,24 +1509,23 @@ function DownloadPackageHelper
 
     if((-not $hashCheck))
     {
+        Write-Error -Message "Cannot verify the file SHA256. Deleting the file."
         $null = remove-item -Path $fullDestinationPath -Force
-        Write-Error -Message "Cannot verify the file SHA256. Deleting the file."                
     }
+    else {
+        Write-Verbose "Hash verified!"
+        $savedWindowsPackageItem = Microsoft.PowerShell.Utility\New-Object PSCustomObject -Property ([ordered]@{
+            SourceName = $source
+            Name = $name
+            Version = $version
+            Description = $description 
+            Date = $date
+            URL = $originPath
+            Size = $size
+            sha256 = $sha })
 
-    Write-Verbose "Hash verified!"
-
-    $savedWindowsPackageItem = Microsoft.PowerShell.Utility\New-Object PSCustomObject -Property ([ordered]@{
-                        SourceName = $source
-                        Name = $name
-                        Version = $version
-                        Description = $description 
-                        Date = $date
-                        URL = $originPath
-                        Size = $size
-                        sha256 = $sha
-    })
-
-    Write-Output (New-SoftwareIdentityFromDockerInfo $savedWindowsPackageItem)
+        Write-Output (New-SoftwareIdentityFromDockerInfo $savedWindowsPackageItem)
+    }
 }
 
 function GenerateFullPath

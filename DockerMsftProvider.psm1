@@ -216,6 +216,7 @@ function Install-Package
     $options = $request.Options
     $update = $false
     $force = $false
+    $cliOnly = $false
 
     if($options)
     {
@@ -234,43 +235,51 @@ function Install-Package
         {
             $force = $true
         }
+
+        if($options.ContainsKey("CliOnly"))
+        {
+            $cliOnly = $true
+        }
     }
 
-    if(Test-Path $script:pathDockerD)
+    if(-not $cliOnly)
     {
-        if($update -or $force)
+        if(Test-Path $script:pathDockerD)
         {
-            # Uninstall if another installation exists
-            UninstallHelper
-        }
-        elseif(-not $force)
-        {
-            $dockerVersion = & "$script:pathDockerClient" --version
-            $resultArr = $dockerVersion -split ","
-            $version = ($resultArr[0].Trim() -split " ")[2]
+            if($update -or $force)
+            {
+                # Uninstall if another installation exists
+                UninstallHelper
+            }
+            elseif(-not $force)
+            {
+                $dockerVersion = & "$script:pathDockerClient" --version
+                $resultArr = $dockerVersion -split ","
+                $version = ($resultArr[0].Trim() -split " ")[2]
 
-            Write-Verbose "Docker $version already exists. Skipping install. Use -force to install anyway."
-            return
-        }
-    }    
-    else
-    {
-        # Install WindowsFeature containers
-        try
+                Write-Verbose "Docker $version already exists. Skipping install. Use -force to install anyway."
+                return
+            }
+        }    
+        else
         {
-            InstallContainer
-        }
-        catch
-        {
-            $ErrorMessage = $_.Exception.Message
-            ThrowError -CallerPSCmdlet $PSCmdlet `
-                        -ExceptionName $_.Exception.GetType().FullName `
-                        -ExceptionMessage $ErrorMessage `
-                        -ErrorId FailedToDownload `
-                        -ErrorCategory InvalidOperation
+            # Install WindowsFeature containers
+            try
+            {
+                InstallContainer
+            }
+            catch
+            {
+                $ErrorMessage = $_.Exception.Message
+                ThrowError -CallerPSCmdlet $PSCmdlet `
+                            -ExceptionName $_.Exception.GetType().FullName `
+                            -ExceptionMessage $ErrorMessage `
+                            -ErrorId FailedToDownload `
+                            -ErrorCategory InvalidOperation
 
-            return
-        }        
+                return
+            }        
+        }
     }
 
     $splitterArray = @("$separator")
@@ -317,18 +326,21 @@ function Install-Package
         $null = Rename-Item -Path $script:pathDockerRoot -NewName $env:ProgramFiles\$dummyName
         $null = Rename-Item -Path $env:ProgramFiles\$dummyName -NewName $script:pathDockerRoot     
 
-        if(Test-Path $script:pathDockerD)
+        if(-not $cliOnly)
         {
-            Write-Verbose "Trying to enable the docker service..."
-            $service = get-service -Name Docker -WarningAction SilentlyContinue -ErrorAction SilentlyContinue
-            if(-not $service)
+            if(Test-Path $script:pathDockerD)
             {
-                & "$script:pathDockerD" --register-service
+                Write-Verbose "Trying to enable the docker service..."
+                $service = get-service -Name Docker -WarningAction SilentlyContinue -ErrorAction SilentlyContinue
+                if(-not $service)
+                {
+                    & "$script:pathDockerD" --register-service
+                }
             }
-        }
-        else
-        {
-            Write-Error "Unable to expand docker to Program Files."
+            else
+            {
+                Write-Error "Unable to expand docker to Program Files."
+            }
         }
     }
     catch
@@ -1258,6 +1270,7 @@ function Get-DynamicOptions
         Install 
         {
             Write-Output -InputObject (New-DynamicOption -Category $category -Name "Update" -ExpectedType Switch -IsRequired $false)
+            Write-Output -InputObject (New-DynamicOption -Category $category -Name "CliOnly" -ExpectedType Switch -IsRequired $false)
         }
     }
 }
